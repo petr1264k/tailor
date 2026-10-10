@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 64 64">
+  <!-- Tailor mark: a page taken in at the waist; the waist line is the one that changed. Bottle green, chalk, chalk yellow. -->
+  <rect width="64" height="64" rx="14" fill="#1b5a44"/>
+  <g transform="translate(8 8) scale(.75)">
+    <path d="M17 7H47V25.5L43.5 32L47 38.5V56H17V38.5L20.5 32L17 25.5Z" fill="#1b5a44" stroke="#f1ece0" stroke-width="4" stroke-linejoin="round"/>
+    <path d="M24 16H40M24 22H34M24 42H40M24 48H32" fill="none" stroke="#f1ece0" stroke-width="2.6" stroke-linecap="round" opacity=".55"/>
+    <path d="M26 32H38" fill="none" stroke="#f4d35e" stroke-width="2.8" stroke-linecap="round"/>
+  </g>
+</svg>

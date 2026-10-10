@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 64 64">
+  <!-- Tailor mark, solid form for 16 px: filled page, waist line only. -->
+  <rect width="64" height="64" rx="14" fill="#1b5a44"/>
+  <g transform="translate(8 8) scale(.75)">
+    <path d="M17 7H47V25.5L43.5 32L47 38.5V56H17V38.5L20.5 32L17 25.5Z" fill="#f1ece0"/>
+    <path d="M26 32H38" fill="none" stroke="#f4d35e" stroke-width="5" stroke-linecap="round"/>
+  </g>
+</svg>

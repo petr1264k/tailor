@@ -97,20 +97,24 @@ function screensLabel(side: ScorecardSide): string {
   return `${side.firstMatchScreens} screens down`
 }
 
-/** One line for the bar's title and the popover head: "1st match 3.6 screens down → first screen · words 2,870 → 1,140". */
+/** A stat earns its place in the bar only when the edits moved it; "3.9 → 3.9" says nothing. */
+const screensChanged = (card: Scorecard): boolean => card.marked > 0 && card.before.firstMatchScreens !== card.after.firstMatchScreens
+const wordsChanged = (card: Scorecard): boolean => card.before.words !== card.after.words
+
+/** One line for the bar's title and the popover head: "1st match 3.6 screens down → first screen · words 2,870 → 1,140". Empty when nothing moved. */
 export function scorecardLine(card: Scorecard): string {
   const parts: string[] = []
-  if (card.marked > 0) parts.push(`1st match ${screensLabel(card.before)} → ${screensLabel(card.after)}`)
-  parts.push(`words ${fmt(card.before.words)} → ${fmt(card.after.words)}`)
+  if (screensChanged(card)) parts.push(`1st match ${screensLabel(card.before)} → ${screensLabel(card.after)}`)
+  if (wordsChanged(card)) parts.push(`words ${fmt(card.before.words)} → ${fmt(card.after.words)}`)
   return parts.join(' · ')
 }
 
-/** The chip itself, short enough for the small bar: "3.6 → 0.5 screens · 2,870 → 1,140 words". Same numbers, fewer words. */
+/** The chip itself, short enough for the small bar: "3.6 → 0.5 screens · 2,870 → 1,140 words". Same numbers, fewer words. Empty when nothing moved. */
 export function scorecardChip(card: Scorecard): string {
   const screens = (side: ScorecardSide): string => (side.firstMatchScreens === null ? 'none' : String(side.firstMatchScreens))
   const parts: string[] = []
-  if (card.marked > 0) parts.push(`${screens(card.before)} → ${screens(card.after)} screens`)
-  parts.push(`${fmt(card.before.words)} → ${fmt(card.after.words)} words`)
+  if (screensChanged(card)) parts.push(`${screens(card.before)} → ${screens(card.after)} screens`)
+  if (wordsChanged(card)) parts.push(`${fmt(card.before.words)} → ${fmt(card.after.words)} words`)
   return parts.join(' · ')
 }
 

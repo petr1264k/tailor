@@ -166,8 +166,9 @@ export function mountTailorButton(callbacks: RenderCallbacks): TailorUi {
         scorePop.replaceChildren()
         return
       }
-      score.hidden = false
-      score.textContent = scorecardChip(card) // the short form fits the small bar; the full line is the tooltip
+      const chip = scorecardChip(card) // the short form fits the small bar; the full line is the tooltip
+      score.hidden = chip === '' // nothing moved: no chip rather than "3.9 → 3.9"
+      score.textContent = chip
       score.title = scorecardLine(card)
       renderScorePop(scorePop, card)
     },

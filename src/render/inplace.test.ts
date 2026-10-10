@@ -467,6 +467,20 @@ describe('scorecard', () => {
     expect(scorecardChip(none)).toBe('2,870 → 1,140 words')
   })
 
+  it('shows a stat only when the edits moved it', () => {
+    const before = { words: 2870, firstMatchTop: 3240, firstMatchScreens: 3.9, onFirstScreen: 0 }
+    const sameScreens = buildScorecard(page([]), before, { ...before, words: 1140 }, 3, 900)
+    expect(scorecardChip(sameScreens)).toBe('2,870 → 1,140 words')
+    expect(scorecardLine(sameScreens)).toBe('words 2,870 → 1,140')
+    const sameWords = buildScorecard(page([]), before, { ...before, firstMatchTop: 420, firstMatchScreens: 0.5 }, 3, 900)
+    expect(scorecardChip(sameWords)).toBe('3.9 → 0.5 screens')
+    expect(scorecardLine(sameWords)).toBe('1st match 3.9 screens down → first screen')
+    const nothing = buildScorecard(page([]), before, { ...before }, 3, 900)
+    expect(scorecardChip(nothing)).toBe('')
+    expect(scorecardLine(nothing)).toBe('')
+    expect(scorecardRows(nothing)[2]).toEqual(['Words on the page', '2,870 → 2,870']) // the popover keeps every row
+  })
+
   it('measureSide reads positions and visible words from the live page', () => {
     document.body.innerHTML = `<div id="a">one two three</div><div id="b" style="display:none">hidden words here</div>`
     const side = measureSide(document, [document.getElementById('a')!, document.getElementById('b')!])

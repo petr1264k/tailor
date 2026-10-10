@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Fact, Profile, SourceSplit } from '@/types'
 import { activeFacts, deleteFact, formatEvidence, getProfile, sourceSplit, updateFact } from '@/profile'
 import { LAYOUT_LABELS, layoutChoiceOf } from '@/learn'
+import { useExtractJob } from './useExtractJob'
 import { FACT_CATEGORY_LABELS, attempt, confidencePct, errorText, groupFactsByCategory, monthRange, type Attempt } from './helpers'
 
 type View = 'category' | 'split'
@@ -39,6 +40,13 @@ export function ProfileTab({ profileId }: { profileId: string }) {
 
   const reload = useCallback(async () => setProfile(await attempt(() => getProfile(profileId))), [profileId])
   useEffect(() => void reload(), [reload])
+
+  // A run into this profile just finished (maybe while this tab was open): show the new facts without a manual reload.
+  const job = useExtractJob()
+  const finishedAt = job.status === 'done' && job.profileId === profileId ? job.finishedAt : null
+  useEffect(() => {
+    if (finishedAt) void reload()
+  }, [finishedAt, reload])
 
   /** Runs a profile mutation; shows the updated profile, or the error inline. */
   async function act(fn: () => Promise<Profile>): Promise<boolean> {

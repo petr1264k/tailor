@@ -2,8 +2,8 @@
  * Import tab (CONTEXT.txt §3.1; demo §9 0:00–0:20 "N conversations, M messages, two sources").
  * Hero (coframe-style dark band + white stats card) with the archive numbers, then Import and Extract side by side.
  * ONE JSON file, never a zip → detectExportFormat (user overrides if 'unknown') → import.runImport, which is
- * parseExport → applyLimits → saveConversations plus skip counts → per-source stats. Then "Extract profile" runs
- * extract.runExtract (§3.2, with progress) into the active profile.
+ * parseExport → applyLimits → saveConversations plus skip counts → per-source stats. Then "Extract profile" starts the
+ * page-level extraction job (extractJob.ts → extract.runExtract, §3.2) into the active profile; it keeps running across the tabs.
  * Nothing here logs or displays message text: the raw chats never reach the screen (§0).
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -11,8 +11,9 @@ import type { ChatOrigin } from '@/types'
 import type { ArchiveStats } from '@/messages'
 import { DEFAULT_IMPORT_OPTIONS, detectExportFormat, runImport } from '@/import'
 import { clearArchive, getArchiveStats } from '@/archive'
-import { runExtract } from '@/extract'
 import { attempt, isZipFile, monthRange, originLabel, type Attempt } from './helpers'
+import { describeExtractJob, isOwnRun, startExtract } from './extractJob'
+import { useExtractJob } from './useExtractJob'
 
 const ORIGINS: ChatOrigin[] = ['chatgpt', 'claude']
 
@@ -235,47 +236,22 @@ function StatsView({ stats }: { stats: Attempt<ArchiveStats> | null }) {
   )
 }
 
+/**
+ * Starts the page-level extraction job (extractJob.ts). The job outlives this card: switching to the Profile or
+ * Receipts tab keeps it running, and the result, error or interruption is shown here and in the header strip.
+ */
 function ExtractCard({ profileId, profileName, disabled }: { profileId: string; profileName: string; disabled: boolean }) {
-  const [running, setRunning] = useState(false)
-  const [seconds, setSeconds] = useState(0)
-  const [progress, setProgress] = useState('')
-  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null)
-
-  useEffect(() => {
-    if (!running) return
-    const t0 = Date.now()
-    const timer = setInterval(() => setSeconds(Math.round((Date.now() - t0) / 1000)), 1000)
-    return () => clearInterval(timer)
-  }, [running])
+  const job = useExtractJob()
+  const own = isOwnRun(job)
+  const [startError, setStartError] = useState<string | null>(null)
 
   async function run() {
-    setRunning(true)
-    setSeconds(0)
-    setProgress('')
-    setResult(null)
-    const t0 = Date.now()
-    // Called directly: this page is in the extension origin (CLAUDE.md), so it gets live progress.
-    const r = await attempt(() =>
-      runExtract(profileId, (done, total, stage) =>
-        setProgress(stage === 'map' ? `Haiku reading chunk ${done} of ${total}` : stage === 'reduce' ? 'Sonnet merging' : 'Finding repeated questions'),
-      ),
-    )
-    const secs = Math.round((Date.now() - t0) / 1000)
-    if (r.ok) {
-      const live = r.value.profile.facts.filter((f) => f.userStatus !== 'deleted').length
-      const { candidates, verified } = r.value.stats
-      setResult({
-        ok: true,
-        text:
-          `Done in ${secs} s: the model proposed ${candidates} facts, code verified the quotes of ${verified}; ` +
-          `${live} facts in profile v${r.value.profile.version}. Open the Profile tab to review.`,
-      })
-    } else {
-      setResult({ ok: false, text: `Extraction failed after ${secs} s: ${r.error}` })
-    }
-    setRunning(false)
+    setStartError(null)
+    const r = await attempt(() => startExtract(profileId, profileName))
+    if (!r.ok) setStartError(r.error)
   }
 
+  const line = describeExtractJob(job)
   return (
     <section className="card stack">
       <div className="card-head">
@@ -283,20 +259,19 @@ function ExtractCard({ profileId, profileName, disabled }: { profileId: string; 
         <h2>Extract profile</h2>
         <p className="muted">
           Haiku proposes facts with a quote from your own messages; code checks every quote; Sonnet merges and scores them. Keep, edit or
-          delete any fact on the Profile tab.
+          delete any fact on the Profile tab. The run keeps going while you look at the other tabs and the facts are saved to the profile
+          the moment it finishes; closing or reloading this page stops it.
         </p>
       </div>
       <div className="row">
-        <button className={running ? 'primary' : 'primary arrow'} disabled={running || disabled} onClick={() => void run()}>
-          {running ? 'Extracting…' : `Extract into “${profileName}”`}
+        <button className={own ? 'primary' : 'primary arrow'} disabled={own || disabled} onClick={() => void run()}>
+          {own ? 'Extracting…' : `Extract into “${profileName}”`}
         </button>
-        {running && (
-          <span className="progress">
-            {progress || 'Reading your messages…'} · {seconds} s
-          </span>
-        )}
+        {job.status === 'running' && <span className="progress">{line}</span>}
       </div>
-      {result && <div className={result.ok ? 'ok' : 'error'}>{result.text}</div>}
+      {startError && <div className="error">{startError}</div>}
+      {job.status === 'done' && <div className="ok">{line} Open the Profile tab to review.</div>}
+      {(job.status === 'error' || job.status === 'interrupted') && <div className="error">{line}</div>}
     </section>
   )
 }

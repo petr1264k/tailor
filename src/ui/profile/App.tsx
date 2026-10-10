@@ -3,8 +3,9 @@
  *
  * Tabs (CONTEXT.txt §3.1, §3.4, §4 step 6, §9 0:00–0:45):
  *  - Import:   ONE JSON file (ChatGPT conversations.json or the Claude export) → archive stats per source → Extract profile
- *  - Profile:  facts by category with source quotes; keep / edit / delete / restore; ChatGPT / Claude / both split;
- *              "never extracted" counts
+ *  - Profile:  facts by category with source quotes; keep / edit / delete / restore; ChatGPT / Claude / both split
+ * The extraction job (extractJob.ts) belongs to the page, not to the Import tab: it keeps running while another tab is
+ * open, its status strip shows on the other tabs, and the page warns before unload while it runs.
  *  - Receipts: what was shared with which site, when (SiteShare)
  * The profile switcher sits in the top bar so the active profile (Mikhail / Petr) is visible on every tab.
  * Runs in the extension origin: calls modules directly. Every call is wrapped (attempt); errors show inline.
@@ -16,6 +17,8 @@ import { Brand } from '../Brand'
 import { attempt } from './helpers'
 import { createProfile } from './store'
 import { ImportTab } from './ImportTab'
+import { describeExtractJob, dismissExtractJob, isOwnRun, restoreExtractJob, type ExtractJob } from './extractJob'
+import { useExtractJob } from './useExtractJob'
 import { ProfileTab } from './ProfileTab'
 import { ReceiptsTab } from './ReceiptsTab'
 
@@ -33,6 +36,20 @@ export function App() {
   const [profileId, setProfileId] = useState<string | null>(null)
   const [profiles, setProfiles] = useState<ProfileEntry[]>([])
   const [switchError, setSwitchError] = useState<string | null>(null)
+  const job = useExtractJob()
+  const ownRun = isOwnRun(job)
+
+  useEffect(() => {
+    void restoreExtractJob()
+  }, [])
+
+  // Leaving the page would stop the run (the model calls live in this page), so ask first.
+  useEffect(() => {
+    if (!ownRun) return
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault()
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [ownRun])
 
   const refreshProfiles = useCallback(async () => {
     const r = await attempt(listProfiles)
@@ -82,6 +99,7 @@ export function App() {
       </header>
       <main className="page">
         {switchError && <div className="error">{switchError}</div>}
+        {tab !== 'import' && job.status !== 'idle' && <ExtractStrip job={job} onView={tab === 'profile' ? undefined : () => setTab('profile')} />}
         {/* key={profileId}: switching profiles remounts the tab so it reloads that profile's data */}
         {profileId && tab === 'import' && <ImportTab key={profileId} profileId={profileId} profileName={nameOf(profiles, profileId)} />}
         {profileId && tab === 'profile' && <ProfileTab key={profileId} profileId={profileId} />}
@@ -143,6 +161,24 @@ function ProfileSwitcher(props: {
       ) : (
         <button onClick={() => setCreating(true)}>New profile</button>
       )}
+    </div>
+  )
+}
+
+/** The extraction job's one-line status, shown on every tab except Import (which has the full card). */
+function ExtractStrip({ job, onView }: { job: ExtractJob; onView?: () => void }) {
+  const cls = job.status === 'done' ? 'ok' : job.status === 'running' ? 'progress' : 'error'
+  return (
+    <div className="card row between extract-strip" role="status">
+      <span className={cls}>{describeExtractJob(job)}</span>
+      <span className="row">
+        {job.status === 'done' && onView && <button className="sm" onClick={onView}>View profile</button>}
+        {job.status !== 'running' && (
+          <button className="sm" onClick={dismissExtractJob}>
+            Dismiss
+          </button>
+        )}
+      </span>
     </div>
   )
 }

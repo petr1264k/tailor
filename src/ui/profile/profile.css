@@ -82,3 +82,7 @@ body { font-size: 16px; line-height: 1.55; }
   .hero { padding: 28px; }
   .topbar-inner { gap: 18px; }
 }
+
+/* Extraction status strip (App.tsx), shown on the Profile and Receipts tabs while a run is going or until dismissed */
+.extract-strip { padding: 10px 16px; }
+.extract-strip > span:first-child { min-width: 0; }

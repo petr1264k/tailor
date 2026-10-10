@@ -22,8 +22,11 @@ export function ReceiptsTab({ profileId }: { profileId: string }) {
 
   return (
     <section className="card stack">
-      <h2 style={{ margin: 0 }}>What you shared with sites</h2>
-      <div className="muted small">Sharing is opt-in per site. Each row is exactly what Tailor sent, and the site's reply in its own words.</div>
+      <div className="card-head">
+        <span className="tag">Receipts</span>
+        <h2>What you shared with sites</h2>
+        <p className="muted small">Sharing is opt-in per site. Each row is exactly what Tailor sent, and the site's reply in its own words.</p>
+      </div>
       {shares.length === 0 ? (
         <div className="muted">Nothing shared yet.</div>
       ) : (

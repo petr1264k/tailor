@@ -1,8 +1,9 @@
 /**
  * Import tab (CONTEXT.txt §3.1; demo §9 0:00–0:20 "N conversations, M messages, two sources").
+ * Hero (coframe-style dark band + white stats card) with the archive numbers, then Import and Extract side by side.
  * ONE JSON file, never a zip → detectExportFormat (user overrides if 'unknown') → import.runImport, which is
- * parseExport → applyLimits → saveConversations plus skip counts → per-source stats. Then "Extract profile" runs extract.runExtract
- * (§3.2, with progress) into the active profile.
+ * parseExport → applyLimits → saveConversations plus skip counts → per-source stats. Then "Extract profile" runs
+ * extract.runExtract (§3.2, with progress) into the active profile.
  * Nothing here logs or displays message text: the raw chats never reach the screen (§0).
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -91,41 +92,55 @@ export function ImportTab({ profileId, profileName }: { profileId: string; profi
 
   return (
     <div className="stack">
-      <section className="card stack">
-        <h2>Import your chat history</h2>
-        <p className="muted" style={{ margin: 0 }}>
-          ChatGPT: Settings › Data controls › Export data. Claude: Settings › Privacy › Export data. Unzip it and drop only{' '}
-          <code>conversations.json</code>. Tailor keeps only your own messages from the last {DEFAULT_IMPORT_OPTIONS.months} months, in this
-          browser.
-        </p>
-        <DropZone disabled={busy} onFiles={(f) => void onFiles(f)} />
-        {pending && (
-          <div className="row">
-            <span>
-              {pending.note} Which export is <b>{pending.fileName}</b>?
-            </span>
-            {ORIGINS.map((o) => (
-              <button key={o} className="primary" onClick={() => void doImport(pending.json, o, pending.fileName)}>
-                {originLabel(o)}
-              </button>
-            ))}
-            <button onClick={() => setPending(null)}>Cancel</button>
-          </div>
-        )}
-        {importLine && <div className={importLine.ok ? 'ok' : 'error'}>{importLine.text}</div>}
-      </section>
-
-      <section className="card stack">
-        <div className="row" style={{ justifyContent: 'space-between' }}>
-          <h2 style={{ margin: 0 }}>Archive</h2>
-          <button className="danger" onClick={() => void onClear()} disabled={busy}>
-            Clear archive
-          </button>
+      <section className="hero">
+        <div className="hero-copy">
+          <span className="tag">Your archive</span>
+          <h1>Your ChatGPT and Claude history knows you better than any website does.</h1>
+          <p>
+            Tailor keeps only your own messages from the last {DEFAULT_IMPORT_OPTIONS.months} months, in this browser. Nothing leaves it
+            except the facts you approve.
+          </p>
         </div>
-        <StatsView stats={stats} />
+        <div className="hero-card">
+          <div className="row between">
+            <span className="label">Archive</span>
+            <button className="danger sm" onClick={() => void onClear()} disabled={busy}>
+              Clear archive
+            </button>
+          </div>
+          <StatsView stats={stats} />
+        </div>
       </section>
 
-      <ExtractCard profileId={profileId} profileName={profileName} disabled={busy} />
+      <div className="two-col">
+        <section className="card stack">
+          <div className="card-head">
+            <span className="tag">Import</span>
+            <h2>Import your chat history</h2>
+            <p className="muted">
+              ChatGPT: Settings › Data controls › Export data. Claude: Settings › Privacy › Export data. Unzip it and drop only{' '}
+              <code>conversations.json</code>.
+            </p>
+          </div>
+          <DropZone disabled={busy} onFiles={(f) => void onFiles(f)} />
+          {pending && (
+            <div className="row">
+              <span>
+                {pending.note} Which export is <b>{pending.fileName}</b>?
+              </span>
+              {ORIGINS.map((o) => (
+                <button key={o} className="primary" onClick={() => void doImport(pending.json, o, pending.fileName)}>
+                  {originLabel(o)}
+                </button>
+              ))}
+              <button onClick={() => setPending(null)}>Cancel</button>
+            </div>
+          )}
+          {importLine && <div className={importLine.ok ? 'ok' : 'error'}>{importLine.text}</div>}
+        </section>
+
+        <ExtractCard profileId={profileId} profileName={profileName} disabled={busy} />
+      </div>
     </div>
   )
 }
@@ -148,7 +163,7 @@ function DropZone({ disabled, onFiles }: { disabled: boolean; onFiles: (files: F
       }}
     >
       <b>Drop conversations.json here</b>
-      <span className="muted">or</span>
+      <span className="muted small">or</span>
       <button className="primary" disabled={disabled} onClick={() => input.current?.click()}>
         Choose file
       </button>
@@ -167,29 +182,35 @@ function DropZone({ disabled, onFiles }: { disabled: boolean; onFiles: (files: F
 }
 
 function StatsView({ stats }: { stats: Attempt<ArchiveStats> | null }) {
-  if (!stats) return <div className="muted">Loading…</div>
+  if (!stats) return <div className="empty">Loading…</div>
   if (!stats.ok) return <div className="error">Archive stats: {stats.error}</div>
   const s = stats.value
-  if (s.messages === 0) return <div className="muted">Nothing imported yet.</div>
+  if (s.messages === 0) {
+    return (
+      <div className="empty">
+        Nothing imported yet. Drop a <code>conversations.json</code> below.
+      </div>
+    )
+  }
   const sources = ORIGINS.filter((o) => (s.byOrigin[o]?.messages ?? 0) > 0).length
   return (
     <div className="stack">
-      <div className="big-numbers">
-        <div>
+      <div className="stats">
+        <div className="stat">
+          <span className="label">Conversations</span>
           <b>{s.conversations.toLocaleString()}</b>
-          <span className="muted">conversations</span>
         </div>
-        <div>
+        <div className="stat">
+          <span className="label">Your messages</span>
           <b>{s.messages.toLocaleString()}</b>
-          <span className="muted">of your messages</span>
         </div>
-        <div>
+        <div className="stat">
+          <span className="label">{sources === 1 ? 'Source' : 'Sources'}</span>
           <b>{sources}</b>
-          <span className="muted">{sources === 1 ? 'source' : 'sources'}</span>
         </div>
-        <div>
-          <b style={{ fontSize: 22, paddingTop: 8 }}>{monthRange(s.from, s.to)}</b>
-          <span className="muted">from – to</span>
+        <div className="stat">
+          <span className="label">From – to</span>
+          <b className="text">{monthRange(s.from, s.to)}</b>
         </div>
       </div>
       <table>
@@ -257,17 +278,20 @@ function ExtractCard({ profileId, profileName, disabled }: { profileId: string; 
 
   return (
     <section className="card stack">
-      <h2>Extract profile</h2>
-      <p className="muted" style={{ margin: 0 }}>
-        Haiku proposes facts with a quote from your own messages; code checks every quote; Sonnet merges and scores them. Everything the
-        model proposes and code verifies goes into the profile; review it on the Profile tab.
-      </p>
+      <div className="card-head">
+        <span className="tag">Extract</span>
+        <h2>Extract profile</h2>
+        <p className="muted">
+          Haiku proposes facts with a quote from your own messages; code checks every quote; Sonnet merges and scores them. Keep, edit or
+          delete any fact on the Profile tab.
+        </p>
+      </div>
       <div className="row">
-        <button className="primary" disabled={running || disabled} onClick={() => void run()}>
+        <button className={running ? 'primary' : 'primary arrow'} disabled={running || disabled} onClick={() => void run()}>
           {running ? 'Extracting…' : `Extract into “${profileName}”`}
         </button>
         {running && (
-          <span className="muted">
+          <span className="progress">
             {progress || 'Reading your messages…'} · {seconds} s
           </span>
         )}

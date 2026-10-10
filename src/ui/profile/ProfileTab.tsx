@@ -9,15 +9,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Fact, Profile, SourceSplit } from '@/types'
 import { activeFacts, deleteFact, formatEvidence, getProfile, sourceSplit, updateFact } from '@/profile'
 import { LAYOUT_LABELS, layoutChoiceOf } from '@/learn'
-import {
-  FACT_CATEGORY_LABELS,
-  attempt,
-  confidencePct,
-  errorText,
-  groupFactsByCategory,
-  monthRange,
-  type Attempt,
-} from './helpers'
+import { FACT_CATEGORY_LABELS, attempt, confidencePct, errorText, groupFactsByCategory, monthRange, type Attempt } from './helpers'
 
 type View = 'category' | 'split'
 
@@ -72,21 +64,22 @@ export function ProfileTab({ profileId }: { profileId: string }) {
       {profile?.ok && (
         <>
           <section className="card stack">
-            <div className="row" style={{ justifyContent: 'space-between' }}>
-              <div>
-                <h2 style={{ margin: 0 }}>What Tailor knows about you</h2>
+            <div className="row between">
+              <div className="card-head">
+                <span className="tag">Profile</span>
+                <h2>What Tailor knows about you</h2>
                 <ProfileSummary profile={profile.value} />
               </div>
               <div className="row">
-                <div className="tabs">
-                  <button aria-selected={view === 'category'} onClick={() => setView('category')}>
+                <div className="seg" role="tablist" aria-label="View">
+                  <button role="tab" aria-selected={view === 'category'} onClick={() => setView('category')}>
                     By category
                   </button>
-                  <button aria-selected={view === 'split'} onClick={() => setView('split')}>
+                  <button role="tab" aria-selected={view === 'split'} onClick={() => setView('split')}>
                     ChatGPT / Claude
                   </button>
                 </div>
-                <button title="Download this profile for the eval harness (data/profiles/)" onClick={() => downloadProfile(profileId, profile.value)}>
+                <button className="sm" title="Download this profile for the eval harness (data/profiles/)" onClick={() => downloadProfile(profileId, profile.value)}>
                   Export JSON
                 </button>
               </div>
@@ -130,7 +123,7 @@ function FactsByCategory({ facts, actions }: { facts: Fact[]; actions: FactActio
       {groups.map((g) => (
         <section key={g.category} className="card group">
           <h3>
-            {FACT_CATEGORY_LABELS[g.category]} <span className="muted small">{g.facts.filter((f) => f.userStatus !== 'deleted').length}</span>
+            {FACT_CATEGORY_LABELS[g.category]} <span className="count">{g.facts.filter((f) => f.userStatus !== 'deleted').length}</span>
           </h3>
           <ul className="facts">
             {g.facts.map((f) => (
@@ -249,9 +242,9 @@ function SplitView({ profile }: { profile: Profile }) {
   return (
     <div className="split">
       {columns.map((c) => (
-        <section key={c.title} className="card">
+        <section key={c.title} className="card group">
           <h3>
-            {c.title} <span className="muted small">{c.facts.length}</span>
+            {c.title} <span className="count">{c.facts.length}</span>
           </h3>
           {c.facts.length === 0 ? (
             <div className="muted small">Nothing here.</div>
@@ -269,4 +262,3 @@ function SplitView({ profile }: { profile: Profile }) {
     </div>
   )
 }
-

@@ -1,16 +1,18 @@
 /**
- * Profile page (options page, opens in a tab). Owner: Petr.
+ * Profile page (options page, opens in a tab). Owner: Petr. Look: coframe.com (src/ui/theme.css).
  *
  * Tabs (CONTEXT.txt §3.1, §3.4, §4 step 6, §9 0:00–0:45):
  *  - Import:   ONE JSON file (ChatGPT conversations.json or the Claude export) → archive stats per source → Extract profile
- *  - Profile:  facts by category with source quotes; keep / edit / delete / restore; ChatGPT / Claude / both split
+ *  - Profile:  facts by category with source quotes; keep / edit / delete / restore; ChatGPT / Claude / both split;
+ *              "never extracted" counts
  *  - Receipts: what was shared with which site, when (SiteShare)
- * The profile switcher sits in the header so the active profile (Mikhail / Petr) is visible on every tab.
+ * The profile switcher sits in the top bar so the active profile (Mikhail / Petr) is visible on every tab.
  * Runs in the extension origin: calls modules directly. Every call is wrapped (attempt); errors show inline.
  */
 import { useCallback, useEffect, useState } from 'react'
 import { getSettings, setSettings } from '@/settings'
 import { DEFAULT_PROFILE_ID, listProfiles } from '@/profile'
+import { Brand } from '../Brand'
 import { attempt } from './helpers'
 import { createProfile } from './store'
 import { ImportTab } from './ImportTab'
@@ -62,26 +64,30 @@ export function App() {
   }
 
   return (
-    <div className="page">
-      <header className="header">
-        <h1>Tailor</h1>
-        <nav className="tabs" role="tablist">
-          {TABS.map((t) => (
-            <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)}>
-              {t.label}
-            </button>
-          ))}
-        </nav>
-        {profileId && (
-          <ProfileSwitcher profiles={profiles} activeId={profileId} onSwitch={switchTo} onCreate={newProfile} />
-        )}
+    <>
+      <header className="topbar">
+        <div className="topbar-inner">
+          <Brand />
+          <nav className="tabs" role="tablist">
+            {TABS.map((t) => (
+              <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)}>
+                {t.label}
+              </button>
+            ))}
+          </nav>
+          {profileId && (
+            <ProfileSwitcher profiles={profiles} activeId={profileId} onSwitch={switchTo} onCreate={newProfile} />
+          )}
+        </div>
       </header>
-      {switchError && <div className="error">{switchError}</div>}
-      {/* key={profileId}: switching profiles remounts the tab so it reloads that profile's data */}
-      {profileId && tab === 'import' && <ImportTab key={profileId} profileId={profileId} profileName={nameOf(profiles, profileId)} />}
-      {profileId && tab === 'profile' && <ProfileTab key={profileId} profileId={profileId} />}
-      {profileId && tab === 'receipts' && <ReceiptsTab key={profileId} profileId={profileId} />}
-    </div>
+      <main className="page">
+        {switchError && <div className="error">{switchError}</div>}
+        {/* key={profileId}: switching profiles remounts the tab so it reloads that profile's data */}
+        {profileId && tab === 'import' && <ImportTab key={profileId} profileId={profileId} profileName={nameOf(profiles, profileId)} />}
+        {profileId && tab === 'profile' && <ProfileTab key={profileId} profileId={profileId} />}
+        {profileId && tab === 'receipts' && <ReceiptsTab key={profileId} profileId={profileId} />}
+      </main>
+    </>
   )
 }
 
@@ -105,7 +111,7 @@ function ProfileSwitcher(props: {
   return (
     <div className="switcher">
       <label className="row">
-        <span className="muted">Profile</span>
+        <span className="label">Profile</span>
         <select value={props.activeId} onChange={(e) => void props.onSwitch(e.target.value)}>
           {options.map((p) => (
             <option key={p.id} value={p.id}>

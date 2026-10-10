@@ -105,7 +105,7 @@ export function mountTailorButton(callbacks: RenderCallbacks): TailorUi {
   bar.setAttribute('aria-label', 'Tailor')
   const button = el('button', 'primary', 'Tailor')
   button.type = 'button'
-  const toggle = el('button', 'secondary', 'Original')
+  const toggle = el('button', 'secondary view', 'Original')
   toggle.type = 'button'
   toggle.hidden = true
   const share = el('button', 'secondary', 'Share')
@@ -128,6 +128,7 @@ export function mountTailorButton(callbacks: RenderCallbacks): TailorUi {
     callbacks,
     setMode(next) {
       mode = next
+      bar.dataset['mode'] = next // PANEL_CSS draws the active segment of the view toggle from this
       const has = hasView(root)
       button.disabled = next === 'loading'
       button.textContent = next === 'loading' ? 'Tailoring…' : next === 'tailored' ? 'Re-tailor' : 'Tailor'
@@ -143,6 +144,7 @@ export function mountTailorButton(callbacks: RenderCallbacks): TailorUi {
     },
     setStatus(text, isError = false) {
       status.textContent = text
+      status.title = text // the bar truncates long statuses
       status.classList.toggle('is-error', isError)
       if (!status.classList.contains('has-log')) gatePop.hidden = true
     },

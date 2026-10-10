@@ -42,7 +42,7 @@ export function ProfileTab({ profileId }: { profileId: string }) {
   useEffect(() => void reload(), [reload])
 
   // A run into this profile just finished (maybe while this tab was open): show the new facts without a manual reload.
-  const job = useExtractJob()
+  const job = useExtractJob({ tick: false })
   const finishedAt = job.status === 'done' && job.profileId === profileId ? job.finishedAt : null
   useEffect(() => {
     if (finishedAt) void reload()

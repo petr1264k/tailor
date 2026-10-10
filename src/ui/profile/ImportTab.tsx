@@ -12,7 +12,7 @@ import type { ArchiveStats } from '@/messages'
 import { DEFAULT_IMPORT_OPTIONS, detectExportFormat, runImport } from '@/import'
 import { clearArchive, getArchiveStats } from '@/archive'
 import { attempt, isZipFile, monthRange, originLabel, type Attempt } from './helpers'
-import { describeExtractJob, isOwnRun, startExtract } from './extractJob'
+import { describeExtractJob, dismissExtractJob, isOwnRun, startExtract } from './extractJob'
 import { useExtractJob } from './useExtractJob'
 
 const ORIGINS: ChatOrigin[] = ['chatgpt', 'claude']
@@ -238,11 +238,13 @@ function StatsView({ stats }: { stats: Attempt<ArchiveStats> | null }) {
 
 /**
  * Starts the page-level extraction job (extractJob.ts). The job outlives this card: switching to the Profile or
- * Receipts tab keeps it running, and the result, error or interruption is shown here and in the header strip.
+ * Receipts tab keeps it running, and its progress, result, error or interruption shows here and in a status strip
+ * on the other tabs.
  */
 function ExtractCard({ profileId, profileName, disabled }: { profileId: string; profileName: string; disabled: boolean }) {
   const job = useExtractJob()
   const own = isOwnRun(job)
+  const running = job.status === 'running'
   const [startError, setStartError] = useState<string | null>(null)
 
   async function run() {
@@ -252,6 +254,7 @@ function ExtractCard({ profileId, profileName, disabled }: { profileId: string; 
   }
 
   const line = describeExtractJob(job)
+  const hint = job.status === 'done' ? (job.profileId === profileId ? ' Open the Profile tab to review.' : ' Switch to that profile to review.') : ''
   return (
     <section className="card stack">
       <div className="card-head">
@@ -264,14 +267,23 @@ function ExtractCard({ profileId, profileName, disabled }: { profileId: string; 
         </p>
       </div>
       <div className="row">
-        <button className={own ? 'primary' : 'primary arrow'} disabled={own || disabled} onClick={() => void run()}>
-          {own ? 'Extracting…' : `Extract into “${profileName}”`}
+        <button className={running ? 'primary' : 'primary arrow'} disabled={running || disabled} onClick={() => void run()}>
+          {own ? 'Extracting…' : running ? 'Running in another tab…' : `Extract into “${profileName}”`}
         </button>
-        {job.status === 'running' && <span className="progress">{line}</span>}
+        {running && <span className="progress">{line}</span>}
       </div>
       {startError && <div className="error">{startError}</div>}
-      {job.status === 'done' && <div className="ok">{line} Open the Profile tab to review.</div>}
-      {(job.status === 'error' || job.status === 'interrupted') && <div className="error">{line}</div>}
+      {job.status !== 'idle' && !running && (
+        <div className="row between">
+          <div className={job.status === 'done' ? 'ok' : 'error'}>
+            {line}
+            {hint}
+          </div>
+          <button className="sm" onClick={dismissExtractJob}>
+            Dismiss
+          </button>
+        </div>
+      )}
     </section>
   )
 }

@@ -4,9 +4,9 @@
  * Tabs (CONTEXT.txt §3.1, §3.4, §4 step 6, §9 0:00–0:45):
  *  - Import:   ONE JSON file (ChatGPT conversations.json or the Claude export) → archive stats per source → Extract profile
  *  - Profile:  facts by category with source quotes; keep / edit / delete / restore; ChatGPT / Claude / both split
+ *  - Receipts: what was shared with which site, when (SiteShare)
  * The extraction job (extractJob.ts) belongs to the page, not to the Import tab: it keeps running while another tab is
  * open, its status strip shows on the other tabs, and the page warns before unload while it runs.
- *  - Receipts: what was shared with which site, when (SiteShare)
  * The profile switcher sits in the top bar so the active profile (Mikhail / Petr) is visible on every tab.
  * Runs in the extension origin: calls modules directly. Every call is wrapped (attempt); errors show inline.
  */
@@ -99,7 +99,7 @@ export function App() {
       </header>
       <main className="page">
         {switchError && <div className="error">{switchError}</div>}
-        {tab !== 'import' && job.status !== 'idle' && <ExtractStrip job={job} onView={tab === 'profile' ? undefined : () => setTab('profile')} />}
+        {tab !== 'import' && job.status !== 'idle' && <ExtractStrip job={job} onView={job.status === 'done' && job.profileId === profileId && tab !== 'profile' ? () => setTab('profile') : undefined} />}
         {/* key={profileId}: switching profiles remounts the tab so it reloads that profile's data */}
         {profileId && tab === 'import' && <ImportTab key={profileId} profileId={profileId} profileName={nameOf(profiles, profileId)} />}
         {profileId && tab === 'profile' && <ProfileTab key={profileId} profileId={profileId} />}

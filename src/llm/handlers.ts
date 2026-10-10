@@ -1,7 +1,7 @@
 /** `llm/test`: one tiny rewrite-shaped call so the popup can show the full API error text. */
 import type { HandlerMap } from '@/messages'
 import { z } from 'zod'
-import { completeJson, LlmError, MODELS } from './client'
+import { completeJson, MODELS } from './client'
 
 const PingSchema = z.object({ ok: z.literal(true) })
 
@@ -19,11 +19,9 @@ export const llmHandlers: HandlerMap = {
       })
       return { ok: true, model: MODELS.rewrite, ms: Math.round(performance.now() - t0) }
     } catch (e) {
-      const detail = e instanceof LlmError ? e.detail : undefined
-      const body =
-        detail && typeof detail === 'object' && 'message' in detail ? String((detail as { message: unknown }).message) : ''
+      // LlmError messages already carry the HTTP status, the API error body and the request id.
       const error = e instanceof Error ? e.message : String(e)
-      return { ok: false, model: MODELS.rewrite, ms: Math.round(performance.now() - t0), error: body && body !== error ? `${error}\n${body}` : error }
+      return { ok: false, model: MODELS.rewrite, ms: Math.round(performance.now() - t0), error }
     }
   },
 }

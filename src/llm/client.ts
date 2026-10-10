@@ -87,6 +87,13 @@ export function extractJson(text: string): unknown {
   }
 }
 
+/** One line of text for an SDK error: "400 This API key is not scoped to a workspace… (request-id req_…)". */
+export function describeApiError(e: unknown): string {
+  if (e instanceof Anthropic.APIError) return e.requestID ? `${e.message} (request-id ${e.requestID})` : e.message
+  if (e instanceof Error) return `${e.name}: ${e.message}`
+  return String(e)
+}
+
 export async function completeJson<T>(opts: CompleteJsonOptions<T>): Promise<CompleteJsonResult<T>> {
   const client = await getClient()
   const model = MODELS[opts.role]
@@ -101,12 +108,13 @@ export async function completeJson<T>(opts: CompleteJsonOptions<T>): Promise<Com
       output_config: { effort: opts.effort ?? 'low' },
     })
   } catch (e) {
-    // Full body in the service worker console (chrome://extensions → Tailor → Inspect views: service worker).
-    console.error('[tailor] Anthropic API error', { model, status: (e as { status?: number }).status, message: (e as Error).message })
-    if (e instanceof Anthropic.RateLimitError) throw new LlmError('rate_limit', 'Rate limited by the API', e)
-    if (e instanceof Anthropic.APIConnectionError) throw new LlmError('network', 'Could not reach the API', e)
-    if (e instanceof Anthropic.APIError) throw new LlmError('api', `API error ${e.status}: ${e.message}`, e)
-    throw new LlmError('api', String(e), e)
+    // chrome://extensions keeps only the text of a console.error (objects show as "[object Object]"),
+    // so log one line of text. The SDK message already starts with the HTTP status and the error body.
+    const summary = describeApiError(e)
+    console.error(`[tailor] Anthropic API error (${model}): ${summary}`)
+    if (e instanceof Anthropic.RateLimitError) throw new LlmError('rate_limit', `Rate limited by the API: ${summary}`, e)
+    if (e instanceof Anthropic.APIConnectionError) throw new LlmError('network', `Could not reach the API: ${summary}`, e)
+    throw new LlmError('api', `API error: ${summary}`, e)
   }
   if (res.stop_reason === 'refusal') throw new LlmError('refusal', 'The model declined this request', res.stop_details)
   if (res.stop_reason === 'max_tokens') throw new LlmError('truncated', `Reply hit max_tokens (${opts.maxTokens ?? 8192})`)

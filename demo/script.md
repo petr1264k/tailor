@@ -19,10 +19,10 @@ Fallbacks for everything: offline copies (`demo/pages/`), cached tailored versio
   *Fallback:* a screenshot of the archive stats and the split, taken at rehearsal.
 - [ ] **0:20–0:45 Profile.** Facts with source quotes. Delete one live.
   *Fallback:* if delete hangs, skip it and move on; do not open raw chats.
-- [ ] **0:45–1:25 Tailor.** Open the TV page as everyone sees it, then click Tailor.
+- [ ] **0:45–1:25 Tailor.** Open the TV page. The bar says Tailoring… and the page re-fits itself the moment the result lands (no click). Flip to Original to show what everyone else sees.
   "For you" notes: PS5 compatibility first, budget checked, marketing collapsed. Hover a "why" chip to show the quote. Flip Original ↔ Tailored.
   *Fallback:* the `file://` copy (`demo/pages/1-product.html`) with the cached tailored version; if the extension fails, cut to the video at this segment.
-- [ ] **Storefront (anker.com), slot it before or instead of the TV page.** Open https://www.anker.com/ as everyone sees it: a sale banner, a stats strip, category tiles, a 29-card "Must-Have" shelf four screens down. Click Tailor.
+- [ ] **Storefront (anker.com), slot it before or instead of the TV page.** Open https://www.anker.com/ as everyone sees it: a sale banner, a stats strip, category tiles, a 29-card "Must-Have" shelf four screens down. Tailoring starts on load; nothing to click.
   The page REBUILDS itself: the shelf (or the collection that fits this person) moves up under the hero with a "Moved up for you" strip; the 1–3 cards that fit their devices and budget jump to the front of the shelf; cards get "For you" tags quoting the page's own watts and prices; the membership pitch, partner promos and reviews fold into one-line stubs. Hover a tag's "why" chip.
   Read the green scorecard chip in the bar out loud: "1st match 3.6 screens down → first screen · words 2,870 → 1,140". Click it: every row is measured by code on this page at the same scroll position, before and after, with N (the marked elements).
   Say: "The site profile is code: it knows anker.com's anatomy (hero, shelf, cards, prices). What goes where comes from this person's facts, every one with its quote. Nothing is scripted: switch the profile and the page rebuilds differently."

@@ -1,6 +1,6 @@
 /**
  * Popup (Owner: Petr). Key entry, active profile, "Tailor this page" / "Show original" / "Share with this site",
- * status with gate counts (§3.6), "Pre-tailor on load" (§3.5). CONTEXT.txt §3.5–3.9, §4.
+ * status with gate counts (§3.6), "Tailor pages automatically as they load" (§3.5, on by default). CONTEXT.txt §3.5–3.9, §4.
  * Runs in the extension origin: reads settings and profiles directly; talks to the page via sendToTab.
  * Every call is wrapped; errors show inline. Look: coframe.com (src/ui/theme.css).
  */
@@ -26,7 +26,7 @@ export function App() {
   const [saved, setSaved] = useState(false)
   const [apiTest, setApiTest] = useState<string | null>(null)
   const [profileName, setProfileName] = useState('')
-  const [pretailor, setPretailor] = useState(false)
+  const [autoTailor, setAutoTailor] = useState(true)
   const [status, setStatus] = useState<ContentStatus | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -36,7 +36,7 @@ export function App() {
       const s = await attempt(getSettings)
       if (!s.ok) return setError(s.error)
       setKey(s.value.anthropicKey ?? '')
-      setPretailor(s.value.pretailorOnLoad)
+      setAutoTailor(s.value.autoTailorOnLoad)
       setProfileName(s.value.activeProfileId)
       const list = await attempt(listProfiles)
       const name = list.ok ? list.value.find((p) => p.id === s.value.activeProfileId)?.name : undefined
@@ -72,11 +72,11 @@ export function App() {
     else setError(r.error)
   }
 
-  async function togglePretailor(on: boolean) {
-    setPretailor(on)
-    const r = await attempt(() => setSettings({ pretailorOnLoad: on }))
+  async function toggleAutoTailor(on: boolean) {
+    setAutoTailor(on)
+    const r = await attempt(() => setSettings({ autoTailorOnLoad: on }))
     if (!r.ok) {
-      setPretailor(!on)
+      setAutoTailor(!on)
       setError(r.error)
     }
   }
@@ -133,8 +133,8 @@ export function App() {
         <div className="panel">
           <span className="label">Settings</span>
           <label className="check">
-            <input type="checkbox" checked={pretailor} onChange={(e) => void togglePretailor(e.target.checked)} />
-            Pre-tailor pages on load
+            <input type="checkbox" checked={autoTailor} onChange={(e) => void toggleAutoTailor(e.target.checked)} />
+            Tailor pages automatically as they load
           </label>
           <label className="field">
             <span className="hint">Anthropic API key (stays in this browser)</span>

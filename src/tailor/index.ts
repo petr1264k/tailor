@@ -5,7 +5,7 @@
  * background:      tailorPage(content, profile) → select relevant facts (code only)                     [relevance.ts]
  *                  → rewrite (Haiku, JSON blocks only)                                                  [rewrite.ts]
  *                  → fidelity gate (§3.6, src/gate) → cache per (profileId, profileVersion, url).       [cache.ts]
- * Output is in the user's chat language, at their reading level. Pre-tailor on page load when enabled.
+ * Output is in the user's chat language, at their reading level. Runs on page load by default; the content script applies the result as it lands.
  */
 import type { Fact, PageContent, Profile, TailoredPage } from '@/types'
 import type { HandlerMap } from '@/messages'

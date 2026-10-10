@@ -13,8 +13,11 @@ export interface Settings {
   openrouterKey?: string
   /** Which provider does fast rewrites. Gemini Flash-Lite is the alternative if it is faster on the day (§5). */
   rewriteProvider: 'anthropic' | 'gemini'
-  /** Pre-tailor on page load and cache per (url, profileVersion) (§3.5). */
-  pretailorOnLoad: boolean
+  /**
+   * Tailor every page as it loads and apply the result the moment it is ready; cached per (url, profileVersion) (§3.5).
+   * Off: the page stays as it is until the user clicks Tailor.
+   */
+  autoTailorOnLoad: boolean
   /** Which stored profile is active (the demo uses two: Mikhail, Petr). */
   activeProfileId: string
   /** Override the output language (BCP 47). Empty = the user's chat language. */
@@ -24,7 +27,7 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   rewriteProvider: 'anthropic',
-  pretailorOnLoad: false,
+  autoTailorOnLoad: true,
   activeProfileId: 'default',
 }
 

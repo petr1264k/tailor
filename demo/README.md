@@ -19,7 +19,7 @@ Pick by 16:00. Every page gets an offline copy in `demo/pages/` (gitignored) so 
 4. **Save As:** the exact file name from `demo/pages.json` (e.g. `1-product.html`). **Where:** `tailor/demo/pages/`.
 5. Click **Save**. Chrome writes the `.html` plus a `<name>_files/` folder next to it; keep both.
 6. Put the live URL in that page's `url` in `demo/pages.json` (links and the cache key use it).
-7. Check: open the copy as `file://…/demo/pages/1-product.html` with "Allow access to file URLs" on the extension card, click Tailor; then `npm run eval -- gate` must not list the page under "no saved copy".
+7. Check: open the copy as `file://…/demo/pages/1-product.html` with "Allow access to file URLs" on the extension card and let it tailor on load (or click Tailor); then `npm run eval -- gate` must not list the page under "no saved copy".
 
 ## Fast fallback: HTML only
 

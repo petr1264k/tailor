@@ -3,6 +3,8 @@
  * Mounts the floating bar, extracts the page content (while the ORIGINAL page is visible, because the
  * gate checks claims against the rendered visible text), asks the background to tailor, renders the
  * result, and runs the share flow with consent (CONTEXT.txt §3.5, §3.7, §4).
+ * By default this happens on its own: the page starts tailoring as soon as it has loaded and the edits land in
+ * place the moment the run finishes (§3.5). The bar's Tailor button re-runs it; the popup can turn auto off.
  *
  * Imports stay light on purpose: '@/tailor/extract', '@/share/hooks' and '@/share/block' pull in no SDK
  * and no IndexedDB, so this bundle loads fast on every page.
@@ -32,6 +34,12 @@ let current: TailoredPage | null = null
 let extracted: ExtractedPage | null = null
 let mode: ContentStatus['mode'] = 'original'
 
+/** Auto-tailor waits for `load` (capped) plus a short settle, so late-rendering storefronts are extracted whole. */
+const AUTO_LOAD_CAP_MS = 1500
+const AUTO_SETTLE_MS = 300
+/** Below this the page has no text to edit in place (tailor.MIN_SEGMENTS_FOR_EDITS; inlined so this bundle does not import '@/tailor'). */
+const MIN_AUTO_SEGMENTS = 3
+
 /** Deleted facts never reach a page (§3.4). Inlined so this bundle does not import '@/profile'. */
 function liveFacts(facts: Fact[]): Fact[] {
   return facts.filter((f) => f.userStatus !== 'deleted')
@@ -39,6 +47,20 @@ function liveFacts(facts: Fact[]): Fact[] {
 
 function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
+}
+
+function pageSettled(): Promise<void> {
+  return new Promise((resolve) => {
+    let done = false
+    const settle = (): void => {
+      if (done) return
+      done = true
+      setTimeout(resolve, AUTO_SETTLE_MS)
+    }
+    if (document.readyState === 'complete') return settle()
+    setTimeout(settle, AUTO_LOAD_CAP_MS)
+    window.addEventListener('load', settle, { once: true })
+  })
 }
 
 /** 'layout:specs_first' → 'specs first'. Inlined (not learn.LAYOUT_LABELS) so this bundle does not import '@/learn'. */
@@ -81,13 +103,22 @@ function boot(): void {
     return target
   }
 
-  async function tailorNow(ui: TailorUi, force: boolean): Promise<void> {
+  /**
+   * Runs the pipeline and puts the result on screen. `auto` is the on-load run (§3.5): it applies in-place edits only.
+   * The block panel is a modal column, so it never opens over a page the user did not ask to tailor; a click shows it.
+   */
+  async function tailorNow(ui: TailorUi, force: boolean, auto = false): Promise<void> {
     const previous = mode
     mode = 'loading'
     try {
       const content = getContent()
       const page = current && !force ? current : await send('tailor/run', { content, force })
       current = page
+      if (auto && !page.edits?.length) {
+        mode = 'original'
+        ui.setStatus(page.edits ? 'Nothing to change for you on this page' : 'Tailored version ready')
+        return
+      }
       const profile = await send('profile/get', {})
       const target = inPlaceTarget()
       // Scorecard (§8.5): the same marked elements measured on the ORIGINAL page, then on the tailored one.
@@ -182,18 +213,29 @@ function boot(): void {
     return false
   })
 
-  // Pre-tailor on load (§3.5): cache first, then a background run; nothing is shown until the user clicks.
+  // Auto-tailor on load (§3.5), on by default: extract while the original is on screen, run (cache first, so a page
+  // seen before re-fits instantly), apply the moment the result lands. Quiet when there is no key, no profile yet or
+  // no editable text; the Tailor button works the same in every case.
   void (async () => {
     try {
       const settings = await send('settings/get', {})
-      if (!settings.pretailorOnLoad) return
-      const content = getContent()
-      const page = (await send('tailor/cached', { url })) ?? (await send('tailor/run', { content }))
-      if (current) return // the user clicked Tailor meanwhile; that result is already on screen
-      current = page // a click on Tailor now shows this instantly
-      if (mode === 'original') ui.setStatus('Tailored version ready')
+      if (!settings.autoTailorOnLoad) return
+      if (!settings.anthropicKey) return ui.setStatus('Add an API key in the Tailor popup to tailor pages as they load')
+      await pageSettled()
+      if (current || mode !== 'original') return // the user clicked Tailor meanwhile
+      if (getContent().segments.length < MIN_AUTO_SEGMENTS) return // nothing to edit in place; a click opens the panel
+      const profile = await send('profile/get', {})
+      if (!liveFacts(profile.facts).length) return ui.setStatus('Import your chats in Tailor to personalize pages')
+      ui.setMode('loading')
+      try {
+        await tailorNow(ui, false, true)
+      } finally {
+        // tailorNow set `mode` across the await; the cast stops TS from narrowing it to the value checked above.
+        ui.setMode((mode as ContentStatus['mode']) === 'tailored' ? 'tailored' : 'original')
+      }
     } catch (err) {
-      console.warn('[tailor] pre-tailor failed', err)
+      console.warn('[tailor] auto-tailor failed', err)
+      ui.setStatus(errorText(err), true)
     }
   })()
 }

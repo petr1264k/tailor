@@ -84,6 +84,8 @@ export const PANEL_CSS = `
   .block--section h3 { margin: 0 0 6px; font-size: 18px; line-height: 1.3; }
   .block--section.is-collapsed .body { max-height: 6.2em; overflow: hidden;
     -webkit-mask-image: linear-gradient(#000 40%, transparent); mask-image: linear-gradient(#000 40%, transparent); }
+  .block--key_facts.is-collapsed tbody tr:nth-child(n+6),
+  .block--compare.is-collapsed tbody tr:nth-child(n+6) { display: none; } /* TABLE_ROWS_SHOWN = 5 */
   .toggle { margin-top: 8px; font-weight: 600; color: var(--t-accent); text-decoration: underline; text-underline-offset: 3px; }
 
   .block--hidden { background: var(--t-soft); border-style: dashed; padding: 10px 14px; color: var(--t-muted); }

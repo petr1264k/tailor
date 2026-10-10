@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { OwnMessage, Profile } from '@/types'
+import type { OwnMessage } from '@/types'
 import type { CompleteJsonOptions } from '@/llm/client'
 
 vi.mock('@/llm/client', () => ({ completeJson: vi.fn() }))
 vi.mock('@/archive', () => ({ getOwnMessages: vi.fn(), getArchiveStats: vi.fn() }))
 vi.mock('@/profile', () => ({
-  emptyProfile: (): Profile => ({ version: 0, facts: [], shares: [], stats: { conversations: 0, messages: 0, from: '', to: '' } }),
   getProfile: vi.fn(),
   saveProfile: vi.fn(),
+  withProfileLock: <T>(fn: () => Promise<T>) => fn(),
 }))
 import { completeJson } from '@/llm/client'
 import { getArchiveStats, getOwnMessages } from '@/archive'
@@ -62,7 +62,8 @@ describe("handlers['extract/run']", () => {
     })
     vi.mocked(saveProfile).mockImplementation(async (p) => ({ ...p, version: p.version + 1 }))
 
-    const { profile, neverExtracted } = await run('petr')
+    const { profile, neverExtracted, stats } = await run('petr')
+    expect(stats).toEqual({ chunks: 1, candidates: 2, verified: 2 })
 
     expect(saveProfile).toHaveBeenCalledWith(expect.anything(), 'petr')
     expect(profile.version).toBe(5)
@@ -72,20 +73,6 @@ describe("handlers['extract/run']", () => {
     expect(ps5?.evidence[0]).toMatchObject({ origin: 'claude', quote: 'Just got a PS5' })
     expect(profile.facts.some((f) => /medication/i.test(f.value + f.evidence.map((e) => e.quote).join()))).toBe(false)
     expect(neverExtracted.health).toBeGreaterThanOrEqual(1)
-  })
-
-  it('degrades gracefully while profile/archive stats are still TODO stubs', async () => {
-    const todo = (where: string) => async () => {
-      throw new Error(`TODO(${where}) — see CONTEXT.txt`)
-    }
-    vi.mocked(getArchiveStats).mockImplementation(todo('archive.getArchiveStats'))
-    vi.mocked(getProfile).mockImplementation(todo('profile.getProfile'))
-    vi.mocked(saveProfile).mockImplementation(todo('profile.saveProfile'))
-
-    const { profile } = await run()
-    expect(profile.version).toBe(1)
-    expect(profile.stats).toEqual({ conversations: 2, messages: 2, from: '2026-09-01T00:00:00Z', to: '2026-09-02T00:00:00Z' })
-    expect(profile.facts.map((f) => f.value)).toContain('owns a PS5')
   })
 
   it('surfaces real errors instead of hiding them', async () => {

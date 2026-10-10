@@ -16,3 +16,4 @@ conversations.json
 demo/pages/*.html
 !demo/pages/.gitkeep
 eval/out/
+demo/pages/*_files/

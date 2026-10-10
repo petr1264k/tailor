@@ -112,21 +112,33 @@ describe('tailorPage', () => {
       blocks: modelBlocks,
       visibleText: content.visibleText,
       links: content.links,
-      userFactValues: ['owns a PS5'],
+      userFactValues: ['owns a PS5', 'just got a PS5, which TV should I get?'],
     })
     expect(await getCachedTailoredPage(URL_, 'mikhail', 4)).toEqual(page)
   })
 
-  it('passes blocks through, ungated, while the gate is a TODO stub', async () => {
+  it('passes the learned layout to the rewrite (§9: two expands of the specs → next page specs first)', async () => {
     mockModel()
-    vi.mocked(runFidelityGate).mockImplementation(() => {
-      throw new Error('TODO(gate.runFidelityGate) — see CONTEXT.txt')
-    })
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const page = await tailorPage(content, profile, settings)
-    expect(page.blocks).toEqual(modelBlocks)
-    expect(page.gate).toEqual({ checked: 0, stripped: [] })
-    expect(warn).toHaveBeenCalled()
+    vi.mocked(runFidelityGate).mockImplementation(({ blocks }) => ({ blocks, gate: { checked: 0, stripped: [] } }))
+    const learned: Profile = {
+      ...profile,
+      facts: [
+        ...profile.facts,
+        {
+          id: 'behavior-layout-specs_first',
+          category: 'reading',
+          value: 'layout:specs_first',
+          confidence: 0.75,
+          source: 'behavior',
+          evidence: [{ origin: URL_, title: 'shop.example.com', date: '2026-10-10', quote: 'expanded the specs table' }],
+          prior: { alpha: 3, beta: 1 },
+        },
+      ],
+    }
+    await tailorPage(content, learned, settings)
+    const user = vi.mocked(completeJson).mock.calls[0]![0].user
+    expect(user).toContain('Layout: specs first')
+    expect(user).not.toContain('layout:specs_first') // not sent as a fact
   })
 
   it('rethrows real gate errors (fail closed)', async () => {

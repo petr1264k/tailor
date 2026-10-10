@@ -7,14 +7,14 @@ import { buildNeedsText, buildRequestBody, previewShare, recordFallbackReply, re
 
 vi.mock('@/llm/client', () => ({ completeJson: vi.fn() }))
 vi.mock('@/filter', () => ({
-  scrubForSharing: vi.fn(() => {
-    throw new Error('TODO(filter.scrubForSharing) — see CONTEXT.txt')
-  }),
+  // Pass-through by default so these tests exercise the local email/phone pass; one test checks the real-filter path.
+  scrubForSharing: vi.fn((text: string) => ({ text, removed: [] })),
 }))
 vi.mock('@/profile', () => ({
   getProfile: vi.fn(),
   saveProfile: vi.fn(),
   activeFacts: (p: Profile) => p.facts.filter((f) => f.userStatus !== 'deleted'),
+  withProfileLock: <T>(fn: () => Promise<T>) => fn(),
 }))
 
 const fact = (id: string, value: string, extra: Partial<Fact> = {}): Fact => ({
@@ -170,14 +170,6 @@ describe('sendShare', () => {
     })
     expect(Date.parse(share.at)).not.toBeNaN()
     expect(profile.shares).toEqual([share])
-  })
-
-  it('still returns the receipt when the profile store is not built yet', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response('Plain text reply.', { status: 200 })))
-    vi.mocked(getProfile).mockRejectedValue(new Error('TODO(profile.getProfile)'))
-    vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const share = await sendShare({ url: 'https://www.coframe.com/', needsText: 'n', factIds: [], hooks: HOOKS })
-    expect(share.response).toBe('Plain text reply.')
   })
 
   it('refuses text with contact details, foreign endpoints without a fallback, and slow sites', async () => {

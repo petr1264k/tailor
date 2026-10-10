@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { BlockSchema, RewriteOutputSchema } from './schemas'
+import { BlockSchema, RewriteOutputSchema, SensitiveVerdictSchema } from './schemas'
 import { BLOCK_TYPES, type Block } from './types'
 
 const samples: Block[] = [
@@ -30,5 +30,18 @@ describe('BlockSchema (the model proposes, code decides)', () => {
   it('requires at least one block in a rewrite', () => {
     expect(RewriteOutputSchema.safeParse({ blocks: [] }).success).toBe(false)
     expect(RewriteOutputSchema.safeParse({ blocks: samples }).success).toBe(true)
+  })
+})
+
+describe('SensitiveVerdictSchema', () => {
+  it('keeps a known category and degrades an unknown one to undefined instead of failing the reply', () => {
+    const parsed = SensitiveVerdictSchema.parse({
+      verdicts: [
+        { index: 0, sensitive: true, category: 'health' },
+        { index: 1, sensitive: true, category: 'astrology', reason: 'star sign' },
+        { index: 2, sensitive: false },
+      ],
+    })
+    expect(parsed.verdicts.map((v) => v.category)).toEqual(['health', undefined, undefined])
   })
 })

@@ -60,7 +60,7 @@ beforeEach(() => {
 describe("'import/run'", () => {
   it('stores own messages only and reports real skipped counts', async () => {
     const res = await handlers['import/run']!({ type: 'import/run', origin: 'chatgpt', json: chatgptExport }, sender)
-    expect(res).toEqual({ conversations: 1, messages: 2, skippedMessages: 2 })
+    expect(res).toMatchObject({ origin: 'chatgpt', conversations: 1, messages: 2, skippedMessages: 2 })
     expect((await getOwnMessages()).map((m) => m.text)).toEqual(['will it work with my PS5?', 'just got a PS5, which TV should I get?'])
   })
 

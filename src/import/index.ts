@@ -94,9 +94,5 @@ export async function runImport(json: unknown, origin?: ChatOrigin, options: Imp
 }
 
 export const handlers: HandlerMap = {
-  'import/run': async (msg) => {
-    const result = await runImport(msg.json, msg.origin, msg.options)
-    // TODO(messages): return `origin`, `skippedConversations`, `droppedByLimits` too once RequestMap['import/run'].res has them.
-    return { conversations: result.conversations, messages: result.messages, skippedMessages: result.skippedMessages }
-  },
+  'import/run': async (msg) => runImport(msg.json, msg.origin, msg.options),
 }

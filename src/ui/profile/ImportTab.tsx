@@ -1,7 +1,7 @@
 /**
  * Import tab (CONTEXT.txt §3.1; demo §9 0:00–0:20 "N conversations, M messages, two sources").
  * ONE JSON file, never a zip → detectExportFormat (user overrides if 'unknown') → import.runImport, which is
- * parseExport → applyLimits → saveConversations plus skip counts → per-source stats. Then "Extract profile" runs the extract handler (§3.2) into the active profile
+ * parseExport → applyLimits → saveConversations plus skip counts → per-source stats. Then "Extract profile" runs extract.runExtract (§3.2, with progress) into the active profile
  * and stores its "never extracted" counts (§3.3) for the Profile tab.
  * Nothing here logs or displays message text: the raw chats never reach the screen (§0).
  */
@@ -10,7 +10,7 @@ import type { ChatOrigin } from '@/types'
 import type { ArchiveStats } from '@/messages'
 import { DEFAULT_IMPORT_OPTIONS, detectExportFormat, runImport } from '@/import'
 import { clearArchive, getArchiveStats } from '@/archive'
-import { handlers as extractHandlers } from '@/extract'
+import { runExtract } from '@/extract'
 import { attempt, isZipFile, monthRange, originLabel, totalCount, type Attempt } from './helpers'
 import { saveNeverExtracted } from './store'
 
@@ -218,6 +218,7 @@ function StatsView({ stats }: { stats: Attempt<ArchiveStats> | null }) {
 function ExtractCard({ profileId, profileName, disabled }: { profileId: string; profileName: string; disabled: boolean }) {
   const [running, setRunning] = useState(false)
   const [seconds, setSeconds] = useState(0)
+  const [progress, setProgress] = useState('')
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null)
 
   useEffect(() => {
@@ -230,19 +231,25 @@ function ExtractCard({ profileId, profileName, disabled }: { profileId: string; 
   async function run() {
     setRunning(true)
     setSeconds(0)
+    setProgress('')
     setResult(null)
     const t0 = Date.now()
-    // Called as a function with a fake sender: this page is in the extension origin (CLAUDE.md).
-    // TODO(ui): show map/reduce progress once extract exposes an onProgress entry point (see requests).
-    const r = await attempt(() => extractHandlers['extract/run']!({ type: 'extract/run', profileId }, {} as chrome.runtime.MessageSender))
+    // Called directly: this page is in the extension origin (CLAUDE.md), so it gets live progress.
+    const r = await attempt(() =>
+      runExtract(profileId, (done, total, stage) =>
+        setProgress(stage === 'map' ? `Haiku reading chunk ${done} of ${total}` : stage === 'reduce' ? 'Sonnet merging' : 'Finding repeated questions'),
+      ),
+    )
     const secs = Math.round((Date.now() - t0) / 1000)
     if (r.ok) {
       const saved = await attempt(() => saveNeverExtracted(profileId, r.value.neverExtracted))
       const live = r.value.profile.facts.filter((f) => f.userStatus !== 'deleted').length
+      const { candidates, verified } = r.value.stats
       setResult({
         ok: saved.ok,
         text:
-          `Done in ${secs} s: ${live} facts in profile v${r.value.profile.version}; ` +
+          `Done in ${secs} s: the model proposed ${candidates} facts, code verified the quotes of ${verified}; ` +
+          `${live} facts in profile v${r.value.profile.version}; ` +
           `${totalCount(r.value.neverExtracted)} sensitive items never extracted.` +
           (saved.ok ? ' Open the Profile tab to review.' : ` Could not store the never-extracted counts: ${saved.error}`),
       })
@@ -263,7 +270,11 @@ function ExtractCard({ profileId, profileName, disabled }: { profileId: string; 
         <button className="primary" disabled={running || disabled} onClick={() => void run()}>
           {running ? 'Extracting…' : `Extract into “${profileName}”`}
         </button>
-        {running && <span className="muted">Reading your messages… {seconds} s</span>}
+        {running && (
+          <span className="muted">
+            {progress || 'Reading your messages…'} · {seconds} s
+          </span>
+        )}
       </div>
       {result && <div className={result.ok ? 'ok' : 'error'}>{result.text}</div>}
     </section>

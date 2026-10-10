@@ -12,6 +12,11 @@ import type { InteractionEvent } from './index'
 
 /** Sections with text this long or longer start collapsed (§3.7, §9 "marketing collapsed"). */
 export const COLLAPSE_AT = 600
+/**
+ * Specs / compare tables with more rows than this start collapsed to their first rows. Expanding one reports
+ * expand key_facts / compare, which learn counts toward "specs first" (§9 1:25 "expand the collapsed specs twice").
+ */
+export const TABLE_ROWS_SHOWN = 5
 
 // ───────────────────────────── pure helpers ─────────────────────────────
 
@@ -231,7 +236,7 @@ const RENDERERS: { [T in BlockType]: Renderer<T> } = {
     root.append(el('div', 'kicker', 'For you'), el('p', 'text', b.text))
     appendDismiss(root, b, ctx)
   },
-  key_facts(root, b) {
+  key_facts(root, b, ctx) {
     const tbody = el('tbody')
     for (const r of b.rows) {
       const th = el('th', undefined, r.label)
@@ -243,8 +248,9 @@ const RENDERERS: { [T in BlockType]: Renderer<T> } = {
     const table = el('table', 'kv')
     table.append(tbody)
     root.append(table)
+    if (b.rows.length > TABLE_ROWS_SHOWN) root.append(collapsible(root, b, true, ctx))
   },
-  compare(root, b) {
+  compare(root, b, ctx) {
     const headRow = el('tr')
     for (const c of b.columns) {
       const th = el('th', undefined, c)
@@ -264,6 +270,7 @@ const RENDERERS: { [T in BlockType]: Renderer<T> } = {
     const wrap = el('div', 'table-wrap')
     wrap.append(table)
     root.append(wrap)
+    if (b.rows.length > TABLE_ROWS_SHOWN) root.append(collapsible(root, b, true, ctx))
   },
   steps(root, b) {
     const ol = el('ol')

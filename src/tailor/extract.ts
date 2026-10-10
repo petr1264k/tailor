@@ -6,7 +6,7 @@
  * Everything returned here is untrusted website text. It is data for the rewrite prompt, never instructions.
  */
 import { Readability } from '@mozilla/readability'
-import type { CoframeAgentHooks, PageContent, PageLink } from '@/types'
+import type { PageContent, PageLink } from '@/types'
 import { readAgentHooks } from '@/share/hooks'
 
 /** Readability text shorter than this is treated as a failed parse; we fall back to the raw body text. */
@@ -28,9 +28,15 @@ export function tidyText(text: string): string {
     .trim()
 }
 
+/** Elements that start a new line in rendered text. Used only by the no-innerText fallback (jsdom / Node eval). */
+const BLOCK_SELECTOR =
+  'address, article, aside, blockquote, br, dd, div, dl, dt, figcaption, figure, footer, form, h1, h2, h3, h4, h5, h6, ' +
+  'header, hr, li, main, nav, ol, p, pre, section, table, td, th, tr, ul'
+
 /**
  * Text of the visible page. In Chrome, body.innerText already skips script/style and hidden elements.
- * jsdom has no innerText, so we fall back to textContent of a clone with script/style/noscript removed.
+ * jsdom has no innerText, so we fall back to textContent of a clone with script/style/noscript removed and a line
+ * break after each block element, so adjacent elements do not glue together ("ProductResourcesCareers").
  */
 export function visibleTextOf(doc: Document): string {
   const body = doc.body
@@ -42,6 +48,7 @@ export function visibleTextOf(doc: Document): string {
   } else {
     const clone = body.cloneNode(true) as HTMLElement
     clone.querySelectorAll('script, style, noscript, template').forEach((n) => n.remove())
+    clone.querySelectorAll(BLOCK_SELECTOR).forEach((n) => n.after(doc.createTextNode('\n')))
     text = clone.textContent ?? ''
   }
   return tidyText(text).slice(0, MAX_VISIBLE_CHARS)
@@ -89,15 +96,6 @@ export function readLinks(doc: Document, pageUrl: string): PageLink[] {
   return Array.from(byHref, ([href, text]) => ({ text, href }))
 }
 
-function safeAgentHooks(doc: Document): CoframeAgentHooks | undefined {
-  try {
-    return readAgentHooks(doc) ?? undefined
-  } catch {
-    // TODO(tailor): remove this wrapper once share.readAgentHooks is implemented (it throws TODO today).
-    return undefined
-  }
-}
-
 /** Runs in the content script. Readability + JSON-LD + visible text + links (+ coframe agent hooks via share.readAgentHooks). */
 export function extractPageContent(doc: Document, url: string): PageContent {
   const visibleText = visibleTextOf(doc)
@@ -113,7 +111,7 @@ export function extractPageContent(doc: Document, url: string): PageContent {
   const useReadability = readable.length >= MIN_READABLE_CHARS
 
   const lang = doc.documentElement?.getAttribute('lang')?.trim() || article?.lang?.trim() || undefined
-  const agentHooks = safeAgentHooks(doc)
+  const agentHooks = readAgentHooks(doc) // never throws; null when the page offers no agent hooks
 
   const content: PageContent = {
     url,

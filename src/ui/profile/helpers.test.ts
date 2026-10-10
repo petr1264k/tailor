@@ -1,11 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import type { Evidence, Fact } from '@/types'
+import type { Fact } from '@/types'
 import {
   attempt,
   confidencePct,
   factValues,
-  fallbackFormatEvidence,
-  formatEvidenceSafe,
   groupFactsByCategory,
   isZipFile,
   monthRange,
@@ -59,28 +57,6 @@ describe('dates', () => {
     expect(monthRange('2025-11-02T00:00:00Z', '2026-10-09T00:00:00Z')).toBe('Nov 2025 – Oct 2026')
     expect(monthRange('2026-10-01', '2026-10-09')).toBe('Oct 2026')
     expect(monthRange('', '')).toBe('—')
-  })
-})
-
-describe('evidence', () => {
-  const ev: Evidence = { origin: 'chatgpt', title: 'TV', date: '2026-08-03', quote: 'just got a PS5, which TV should I get?' }
-
-  it('matches the §3.4 shape', () => {
-    expect(fallbackFormatEvidence(ev, NOW)).toBe("ChatGPT, Aug 3: 'just got a PS5, which TV should I get?'")
-  })
-
-  it('truncates long quotes and survives a missing date', () => {
-    const long = fallbackFormatEvidence({ ...ev, date: '', quote: 'a'.repeat(300) }, NOW)
-    expect(long.startsWith("ChatGPT: 'aaa")).toBe(true)
-    expect(long.length).toBeLessThan(160)
-  })
-
-  it('uses the given formatter, falls back when it throws', () => {
-    expect(formatEvidenceSafe(ev, () => 'module says hi')).toBe('module says hi')
-    const fallback = formatEvidenceSafe(ev, () => {
-      throw new Error('TODO')
-    })
-    expect(fallback).toContain("'just got a PS5, which TV should I get?'")
   })
 })
 

@@ -9,12 +9,12 @@
  *
  * Message text is never logged (§0). Prompts live in ./prompts.ts.
  */
-import type { Evidence, Fact, OwnMessage, Profile, ProfileStats } from '@/types'
+import type { Evidence, Fact, OwnMessage, Profile } from '@/types'
 import { CandidateFactsOutputSchema, MergedFactsOutputSchema, type CandidateFact } from '@/schemas'
 import type { HandlerMap } from '@/messages'
 import { completeJson } from '@/llm/client'
 import { getArchiveStats, getOwnMessages } from '@/archive'
-import { emptyProfile, getProfile, saveProfile } from '@/profile'
+import { getProfile, saveProfile, withProfileLock } from '@/profile'
 import { filterSensitive } from '@/filter'
 import { MAP_SYSTEM, MERGE_SYSTEM } from './prompts'
 
@@ -407,46 +407,30 @@ export function mergeIntoProfile(profile: Profile, extracted: Fact[]): Profile {
   return { ...profile, facts }
 }
 
-function statsFromMessages(messages: OwnMessage[]): ProfileStats {
-  const dates = messages.map((m) => m.date).sort()
-  return {
-    conversations: new Set(messages.map((m) => m.conversationId)).size,
-    messages: messages.length,
-    from: dates[0] ?? '',
-    to: dates[dates.length - 1] ?? '',
-  }
+export interface ExtractRunResult {
+  profile: Profile
+  neverExtracted: Record<string, number>
+  stats: { chunks: number; candidates: number; verified: number }
 }
 
-/** Another module's body may still be a todo() stub mid-build: fall back on TODO throws only; real errors surface. */
-// TODO(extract): remove once archive.getArchiveStats and profile.getProfile/saveProfile are implemented.
-async function unlessTodo<T>(fn: () => Promise<T>, fallback: () => T): Promise<T> {
-  try {
-    return await fn()
-  } catch (e) {
-    if (e instanceof Error && e.message.startsWith('TODO(')) return fallback()
-    throw e
-  }
+/**
+ * The whole run: own messages → extractFacts → filterSensitive → merge into the stored profile → save.
+ * The profile page calls this directly (extension origin) to show progress; 'extract/run' wraps it.
+ * The long model work runs outside the profile lock; only the read-merge-save is serialized.
+ */
+export async function runExtract(profileId?: string, onProgress?: ExtractOptions['onProgress']): Promise<ExtractRunResult> {
+  const messages = await getOwnMessages()
+  const { facts, questions, stats } = await extractFacts(messages, { onProgress })
+  const { kept, counts } = await filterSensitive([...facts, ...questions])
+  const profile = await withProfileLock(async () => {
+    const current = await getProfile(profileId)
+    const { conversations, messages: count, from, to } = await getArchiveStats()
+    return saveProfile({ ...mergeIntoProfile(current, kept), stats: { conversations, messages: count, from, to } }, profileId)
+  })
+  return { profile, neverExtracted: counts, stats }
 }
 
 export const handlers: HandlerMap = {
-  'extract/run': async (msg) => {
-    const messages = await getOwnMessages()
-    // TODO(extract): stream onProgress to the UI (needs a progress message or a port in src/messages.ts).
-    const { facts, questions } = await extractFacts(messages)
-    const { kept, counts } = await filterSensitive([...facts, ...questions])
-    const current = await unlessTodo(() => getProfile(msg.profileId), emptyProfile)
-    const stats = await unlessTodo(
-      async () => {
-        const { conversations, messages: count, from, to } = await getArchiveStats()
-        return { conversations, messages: count, from, to }
-      },
-      () => statsFromMessages(messages),
-    )
-    const next: Profile = { ...mergeIntoProfile(current, kept), stats }
-    const profile = await unlessTodo(
-      () => saveProfile(next, msg.profileId),
-      () => ({ ...next, version: next.version + 1 }),
-    )
-    return { profile, neverExtracted: counts }
-  },
+  // No progress over messaging: the profile page calls runExtract(profileId, onProgress) directly instead.
+  'extract/run': async (msg) => runExtract(msg.profileId),
 }

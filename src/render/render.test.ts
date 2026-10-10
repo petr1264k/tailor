@@ -202,6 +202,17 @@ describe('renderTailored', () => {
     expect(onInteraction).toHaveBeenLastCalledWith({ kind: 'collapse', blockType: 'section', factIds: [] })
   })
 
+  it('a long specs table starts collapsed and reports expand key_facts (learn: specs first); a short one has no toggle', () => {
+    const { onInteraction } = setup()
+    const rows = Array.from({ length: 8 }, (_, i) => ({ label: `Spec ${i}`, value: `${i}` }))
+    renderTailored(page([{ type: 'key_facts', rows }, { type: 'key_facts', rows: rows.slice(0, 3) }]), [], ui!)
+    const [long, short] = Array.from(ui!.root.querySelectorAll<HTMLElement>('.block--key_facts'))
+    expect(long!.classList.contains('is-collapsed')).toBe(true)
+    expect(short!.querySelector('.toggle')).toBeNull()
+    long!.querySelector<HTMLButtonElement>('.toggle')!.click()
+    expect(onInteraction).toHaveBeenLastCalledWith({ kind: 'expand', blockType: 'key_facts', factIds: [] })
+  })
+
   it('the hidden row expands and reports expand', () => {
     const { onInteraction } = setup()
     renderTailored(page([{ type: 'hidden', label: 'Marketing', reason: 'you skip it' }]), [], ui!)

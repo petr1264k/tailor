@@ -44,12 +44,27 @@ export interface RequestMap {
   'settings/set': { req: { patch: Partial<Settings> }; res: Settings }
   'import/run': {
     req: { origin: ChatOrigin; json: unknown; options?: ImportOptions }
-    res: { conversations: number; messages: number; skippedMessages: number }
+    res: {
+      /** The origin actually used: a detected format wins over the requested one. */
+      origin: ChatOrigin
+      conversations: number
+      messages: number
+      /** Malformed/undated own messages plus `droppedByLimits`. */
+      skippedMessages: number
+      /** Outside the months window or over the token cap (§3.1). */
+      droppedByLimits: number
+      skippedConversations: number
+    }
   }
   'archive/stats': { req: Empty; res: ArchiveStats }
   'extract/run': {
     req: { profileId?: string }
-    res: { profile: Profile; neverExtracted: Record<string, number> }
+    res: {
+      profile: Profile
+      neverExtracted: Record<string, number>
+      /** "The model proposed N, code verified M" (§0): candidates proposed by the map step vs quotes verified by code. */
+      stats?: { chunks: number; candidates: number; verified: number }
+    }
   }
   'profile/get': { req: { profileId?: string }; res: Profile }
   'profile/split': { req: { profileId?: string }; res: SourceSplit }
@@ -63,7 +78,15 @@ export interface RequestMap {
   'learn/log': { req: { interaction: Interaction }; res: { profileVersion: number; changed: Fact[] } }
   'share/preview': { req: { content: PageContent; tailored: TailoredPage }; res: SharePreview }
   'share/send': {
-    req: { url: string; needsText: string; constraints?: string; factIds: string[]; hooks: CoframeAgentHooks }
+    req: {
+      url: string
+      needsText: string
+      constraints?: string
+      factIds: string[]
+      hooks: CoframeAgentHooks
+      /** Use the cached demo reply instead of calling the endpoint (§12). Nothing is sent; label it honestly. */
+      useFallback?: boolean
+    }
     res: SiteShare
   }
 }

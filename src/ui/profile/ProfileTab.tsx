@@ -9,13 +9,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Fact, Profile, SourceSplit } from '@/types'
 import { activeFacts, deleteFact, formatEvidence, getProfile, sourceSplit, updateFact } from '@/profile'
+import { LAYOUT_LABELS, layoutChoiceOf } from '@/learn'
 import {
   FACT_CATEGORY_LABELS,
   attempt,
   confidencePct,
   dateTime,
   errorText,
-  formatEvidenceSafe,
   groupFactsByCategory,
   monthRange,
   neverExtractedRows,
@@ -25,6 +25,25 @@ import {
 import { loadNeverExtracted } from './store'
 
 type View = 'category' | 'split'
+
+/** Learned layout facts ('layout:specs_first') read as "Layout: Specs first"; everything else as stored. */
+function factLabel(fact: Fact): string {
+  const choice = layoutChoiceOf(fact)
+  return choice ? `Layout: ${LAYOUT_LABELS[choice]}` : fact.value
+}
+
+/**
+ * Downloads `<profileId>.json` as { id, profile }, the shape eval/lib/common.ts loads from data/profiles/ (§8.2 precision).
+ * Local file only: it holds facts and short quotes, so never open it on stage.
+ */
+function downloadProfile(profileId: string, profile: Profile): void {
+  const blob = new Blob([JSON.stringify({ id: profileId, profile }, null, 2)], { type: 'application/json' })
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = `${profileId}.json`
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(a.href), 0)
+}
 
 export function ProfileTab({ profileId }: { profileId: string }) {
   const [profile, setProfile] = useState<Attempt<Profile> | null>(null)
@@ -63,12 +82,17 @@ export function ProfileTab({ profileId }: { profileId: string }) {
                 <h2 style={{ margin: 0 }}>What Tailor knows about you</h2>
                 <ProfileSummary profile={profile.value} />
               </div>
-              <div className="tabs">
-                <button aria-selected={view === 'category'} onClick={() => setView('category')}>
-                  By category
-                </button>
-                <button aria-selected={view === 'split'} onClick={() => setView('split')}>
-                  ChatGPT / Claude
+              <div className="row">
+                <div className="tabs">
+                  <button aria-selected={view === 'category'} onClick={() => setView('category')}>
+                    By category
+                  </button>
+                  <button aria-selected={view === 'split'} onClick={() => setView('split')}>
+                    ChatGPT / Claude
+                  </button>
+                </div>
+                <button title="Download this profile for the eval harness (data/profiles/)" onClick={() => downloadProfile(profileId, profile.value)}>
+                  Export JSON
                 </button>
               </div>
             </div>
@@ -163,7 +187,7 @@ function FactRow({ fact, actions }: { fact: Fact; actions: FactActions }) {
             </button>
           </form>
         ) : (
-          <span className="fact-value">{fact.value}</span>
+          <span className="fact-value">{factLabel(fact)}</span>
         )}
         <span className={fact.source === 'behavior' ? 'chip accent' : 'chip'}>{fact.source === 'behavior' ? 'from your clicks' : 'from your chats'}</span>
         {fact.userStatus && fact.userStatus !== 'deleted' && <span className="chip">{fact.userStatus}</span>}
@@ -177,7 +201,7 @@ function FactRow({ fact, actions }: { fact: Fact; actions: FactActions }) {
       {fact.evidence.length > 0 && (
         <ul className="evidence">
           {fact.evidence.slice(0, MAX_EVIDENCE_LINES).map((e, i) => (
-            <li key={i}>{formatEvidenceSafe(e, formatEvidence)}</li>
+            <li key={i}>{formatEvidence(e)}</li>
           ))}
           {fact.evidence.length > MAX_EVIDENCE_LINES && <li>+ {fact.evidence.length - MAX_EVIDENCE_LINES} more</li>}
         </ul>

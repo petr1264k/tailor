@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { readAgentHooks } from '@/share/hooks'
 import { extractPageContent } from './extract'
 
-// share.readAgentHooks may still be a TODO stub; control it here so these tests do not depend on it.
+// Control the hooks reader here so these tests cover extraction only (src/share/hooks.test.ts covers the reader).
 vi.mock('@/share/hooks', () => ({ readAgentHooks: vi.fn(() => null) }))
 
 const URL_ = 'https://shop.example.com/tv/qn90d?ref=home#reviews'
@@ -91,11 +91,9 @@ describe('extractPageContent', () => {
     expect(c.links).toEqual([])
   })
 
-  it('degrades gracefully while share.readAgentHooks is a TODO stub', () => {
-    vi.mocked(readAgentHooks).mockImplementation(() => {
-      throw new Error('TODO(share.readAgentHooks) — see CONTEXT.txt')
-    })
-    expect(extractPageContent(parse(TV_PAGE), URL_).agentHooks).toBeUndefined()
+  it('keeps adjacent block elements apart in the no-innerText fallback (jsdom / Node eval)', () => {
+    const doc = parse('<html><body><nav><div>Product</div><div>Resources</div></nav><ul><li>Careers</li><li>Sign in</li></ul></body></html>')
+    expect(extractPageContent(doc, 'https://x.test/').visibleText).toMatch(/^Product\nResources\n+Careers\nSign in$/)
   })
 
   it('attaches agent hooks when the page offers them', () => {

@@ -2,7 +2,7 @@
  * Pure helpers for the extension pages (profile page + popup). No React, no chrome, no IndexedDB here,
  * so everything in this file is unit-tested in helpers.test.ts.
  */
-import type { Evidence, Fact, FactCategory } from '@/types'
+import type { Fact, FactCategory } from '@/types'
 import { FACT_CATEGORIES } from '@/types'
 import { SENSITIVE_CATEGORIES, type SensitiveCategory } from '@/filter'
 
@@ -105,23 +105,6 @@ export function monthRange(from: string, to: string): string {
 export function truncate(text: string, max: number): string {
   const t = text.trim()
   return t.length <= max ? t : `${t.slice(0, Math.max(0, max - 1)).trimEnd()}…`
-}
-
-/** Same shape as profile.formatEvidence: "ChatGPT, Aug 3: 'just got a PS5, which TV should I get?'" (§3.4). */
-export function fallbackFormatEvidence(e: Evidence, now?: Date): string {
-  const date = shortDate(e.date, now)
-  const head = date ? `${originLabel(e.origin)}, ${date}` : originLabel(e.origin)
-  return `${head}: '${truncate(e.quote, 140)}'`
-}
-
-/** Prefer the profile module's formatter; fall back to the inline one if it throws (e.g. still TODO). */
-export function formatEvidenceSafe(e: Evidence, format: (e: Evidence) => string): string {
-  try {
-    return format(e)
-  } catch {
-    // TODO(ui): drop this fallback once profile.formatEvidence is implemented.
-    return fallbackFormatEvidence(e)
-  }
 }
 
 // ── Facts ──

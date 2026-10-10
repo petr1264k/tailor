@@ -54,6 +54,13 @@ describe('selectRelevantFacts', () => {
     expect(got.map((f) => f.id)).toEqual(['f-bullets'])
   })
 
+  it('leaves learned layout facts out (they reach the rewrite as the Layout line)', async () => {
+    const layout = fact('behavior-layout-specs_first', 'reading', 'layout:specs_first', 'expanded the specs table', { source: 'behavior' })
+    const got = await selectRelevantFacts(profile([ps5, bullets, layout]), TV)
+    expect(got.map((f) => f.id)).toEqual(expect.arrayContaining(['f-ps5', 'f-bullets']))
+    expect(got.map((f) => f.id)).not.toContain('behavior-layout-specs_first')
+  })
+
   it('respects max and orders by score', async () => {
     const wall = fact('f-wall', 'constraint', 'needs a wall mount for a 65 inch TV', 'is the wall mount included?')
     const gamer = fact('f-xbox', 'interest', 'plays games on Xbox Series X at 120Hz')

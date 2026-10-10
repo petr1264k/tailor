@@ -19,7 +19,7 @@ import type { HandlerMap, SharePreview } from '@/messages'
 import { completeJson } from '@/llm/client'
 import { NeedsTextSchema } from '@/schemas'
 import { scrubForSharing } from '@/filter'
-import { activeFacts, getProfile, saveProfile } from '@/profile'
+import { activeFacts, getProfile, saveProfile, withProfileLock } from '@/profile'
 import { DEFAULT_LIMITS, FIELD_ROLES, shareEndpoint } from './hooks'
 import { DEMO_FALLBACK_REPLY } from './fallback'
 
@@ -82,16 +82,9 @@ export async function buildNeedsText(facts: Fact[], content: PageContent): Promi
   return constraints ? { needs, constraints } : { needs }
 }
 
-/** scrubForSharing from '@/filter', then a local email/phone pass (always), whitespace, and the length limit. */
+/** scrubForSharing from '@/filter', then a local email/phone pass (cheap defense in depth), whitespace, the length limit. */
 function cleanForSharing(text: string, limit: number): string {
-  let out = text
-  try {
-    out = scrubForSharing(out).text
-  } catch {
-    // TODO(share): filter.scrubForSharing threw TODO at scaffold time; the local regex below is the fallback.
-    // Keep the local pass even after the filter lands: it is cheap defense in depth.
-  }
-  return truncate(scrubContact(out).replace(/\s+/g, ' ').trim(), limit)
+  return truncate(scrubContact(scrubForSharing(text).text).replace(/\s+/g, ' ').trim(), limit)
 }
 
 const EMAIL_RE = /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g
@@ -127,7 +120,7 @@ export function pickShareFacts(tailored: TailoredPage, facts: Fact[]): Fact[] {
 }
 
 export async function previewShare(content: PageContent, tailored: TailoredPage): Promise<SharePreview> {
-  const facts = pickShareFacts(tailored, await liveFacts())
+  const facts = pickShareFacts(tailored, activeFacts(await getProfile()))
   const { needs, constraints } = await buildNeedsText(facts, content)
   const endpoint = shareEndpoint(content.agentHooks)
   return {
@@ -137,16 +130,6 @@ export async function previewShare(content: PageContent, tailored: TailoredPage)
     endpoint,
     agentName: AGENT_NAME,
     usingFallback: !endpoint,
-  }
-}
-
-async function liveFacts(): Promise<Fact[]> {
-  try {
-    return activeFacts(await getProfile())
-  } catch (e) {
-    // TODO(share): remove this wrapper once profile.getProfile is implemented (it threw TODO at scaffold time).
-    console.warn('[tailor] share: profile unavailable:', errText(e))
-    return []
   }
 }
 
@@ -273,14 +256,12 @@ function siteError(text: string): string {
   return j && typeof j.error === 'string' ? `: ${j.error.slice(0, 200)}` : ''
 }
 
+/** Appends the receipt under the profile lock, so it cannot race with learn/log's read-modify-write. */
 async function saveReceipt(share: SiteShare): Promise<void> {
-  try {
+  await withProfileLock(async () => {
     const profile = await getProfile()
     await saveProfile({ ...profile, shares: [...(profile.shares ?? []), share] })
-  } catch (e) {
-    // TODO(share): remove this wrapper once profile.getProfile/saveProfile are implemented (they threw TODO at scaffold time).
-    console.warn('[tailor] share receipt not saved:', errText(e))
-  }
+  })
 }
 
 function hostOf(url: string): string {
@@ -289,10 +270,6 @@ function hostOf(url: string): string {
   } catch {
     return 'the site'
   }
-}
-
-function errText(e: unknown): string {
-  return e instanceof Error ? e.message : String(e)
 }
 
 export const handlers: HandlerMap = {

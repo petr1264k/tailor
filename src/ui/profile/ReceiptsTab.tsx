@@ -5,6 +5,7 @@
 import { useEffect, useState } from 'react'
 import type { Profile, SiteShare } from '@/types'
 import { getProfile } from '@/profile'
+import { isFallbackShare } from '@/share/fallback'
 import { attempt, dateTime, factValues, siteLabel, truncate, type Attempt } from './helpers'
 
 const REPLY_PREVIEW_CHARS = 160
@@ -65,7 +66,10 @@ function ReceiptRow({ share, profile }: { share: SiteShare; profile: Profile }) 
         </ul>
       </td>
       <td>
-        <div className="from-site">From {siteLabel(share.url)} · the site's own words</div>
+        <div className="from-site">
+          From {siteLabel(share.url)} · the site's own words
+          {isFallbackShare(share) && ' · cached demo reply (nothing was sent)'}
+        </div>
         <p className="reply">{expanded || !long ? share.response : truncate(share.response, REPLY_PREVIEW_CHARS)}</p>
         {long && (
           <button className="link" onClick={() => setExpanded(!expanded)}>

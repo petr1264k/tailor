@@ -131,6 +131,12 @@ describe('filterSensitive', () => {
     warn.mockRestore()
   })
 
+  it("uses the classifier's category when it gives one", async () => {
+    mockComplete.mockResolvedValueOnce(reply({ verdicts: [{ index: 0, sensitive: true, category: 'finances', reason: 'medical bills' }] }))
+    const r = await filterSensitive([fact('a', 'pays off a loan', ['paying off the loan this year'])])
+    expect(r.removed[0]).toMatchObject({ category: 'finances', by: 'classifier' })
+  })
+
   it('maps a free-text classifier reason to a category', async () => {
     mockComplete.mockResolvedValueOnce(reply({ verdicts: [{ index: 0, sensitive: true, reason: 'mentions a medical condition' }] }))
     const r = await filterSensitive([fact('a', 'avoids long walks', ['knee hurts after long walks'])])

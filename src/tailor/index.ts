@@ -7,29 +7,25 @@
  *                  → fidelity gate (§3.6, src/gate) → cache per (profileId, profileVersion, url).       [cache.ts]
  * Output is in the user's chat language, at their reading level. Pre-tailor on page load when enabled.
  */
-import type { PageContent, Profile, TailoredPage } from '@/types'
+import type { Fact, PageContent, Profile, TailoredPage } from '@/types'
 import type { HandlerMap } from '@/messages'
 import type { Settings } from '@/settings'
 import { getSettings } from '@/settings'
 import { getProfile } from '@/profile'
-import { runFidelityGate, type GateOutput } from '@/gate'
+import { bestLayout, rememberLayout } from '@/learn'
+import { runFidelityGate } from '@/gate'
 import { selectRelevantFacts } from './relevance'
 import { rewritePage } from './rewrite'
 import { cacheKey, getCachedTailoredPage, setCachedTailoredPage } from './cache'
 
 export { extractPageContent } from './extract'
 export { selectRelevantFacts, scoreFact, tokenize } from './relevance'
-export { rewritePage, buildRewriteUserPrompt, checkBlocks, chooseLanguage, REWRITE_SYSTEM } from './rewrite'
+export { rewritePage, buildRewriteUserPrompt, checkBlocks, chooseLanguage, REWRITE_SYSTEM, LAYOUT_HINTS } from './rewrite'
 export type { RewriteOptions } from './rewrite'
 export { getCachedTailoredPage, setCachedTailoredPage, cacheKey, stripHash } from './cache'
 
 export const AGENT_MARKDOWN_TIMEOUT_MS = 3_000
 export const MAX_AGENT_MARKDOWN_CHARS = 60_000
-
-/** Errors thrown by `todo()` (src/todo.ts) in modules that are not built yet. */
-export function isTodoError(err: unknown): boolean {
-  return err instanceof Error && err.message.startsWith('TODO(')
-}
 
 const siteOf = (host: string) => host.replace(/^www\./, '')
 
@@ -78,6 +74,14 @@ export async function fetchAgentMarkdown(url: string, markdownUrl?: string): Pro
   }
 }
 
+/**
+ * What the gate accepts as the user's own words in for_you / warning blocks (§3.6): each relevant fact's value plus
+ * its evidence quotes, so a note that repeats the user's own phrasing is labeled as theirs instead of being stripped.
+ */
+export function userFactValues(facts: Fact[]): string[] {
+  return facts.flatMap((f) => [f.value, ...f.evidence.map((e) => e.quote)])
+}
+
 /** select → rewrite → gate → cache. Returns a TailoredPage whose blocks have already passed the gate. */
 export async function tailorPage(content: PageContent, profile: Profile, settings: Settings): Promise<TailoredPage> {
   // Extract from the agent version when offered; the gate still checks the VISIBLE page (§3.6).
@@ -89,25 +93,23 @@ export async function tailorPage(content: PageContent, profile: Profile, setting
   }
 
   const facts = await selectRelevantFacts(profile, working)
+  // Learned layout (§3.8). Greedy (posterior mean > 0.5), not a Thompson draw: the same profile always gets the same
+  // layout, so the demo's "next product shows specs first" is deterministic. learn.sampleLayout is the exploring option.
+  const layout = bestLayout(profile)
+  rememberLayout(content.url, layout) // dwell / toggle_original then reward or penalize what was actually shown
   const blocks = await rewritePage(working, facts, {
     language: settings.language || undefined,
     readingLevel: settings.readingLevel,
+    layout,
   })
 
-  let gated: GateOutput
-  try {
-    gated = runFidelityGate({
-      blocks,
-      visibleText: content.visibleText,
-      links: content.links,
-      userFactValues: facts.map((f) => f.value),
-    })
-  } catch (err) {
-    // TODO(tailor): remove this wrapper once gate.runFidelityGate is implemented. Real gate errors still throw.
-    if (!isTodoError(err)) throw err
-    console.warn('[tailor] fidelity gate not built yet; blocks are UNGATED')
-    gated = { blocks, gate: { checked: 0, stripped: [] } }
-  }
+  // Fail closed: a gate error fails the run; ungated blocks never reach the page.
+  const gated = runFidelityGate({
+    blocks,
+    visibleText: content.visibleText,
+    links: content.links,
+    userFactValues: userFactValues(facts),
+  })
 
   const page: TailoredPage = { url: content.url, profileVersion: profile.version, blocks: gated.blocks, gate: gated.gate }
   try {

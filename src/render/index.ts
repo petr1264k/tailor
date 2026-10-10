@@ -32,6 +32,7 @@ export {
   renderBlock,
   safeHref,
   splitSiteClaims,
+  TABLE_ROWS_SHOWN,
 } from './blocks'
 export type { BlockContext, TextPart } from './blocks'
 

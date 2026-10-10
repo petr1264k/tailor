@@ -24,8 +24,11 @@ export function recordFallbackReply(response: string, at: string): string {
   )
 }
 
-/** True when a receipt's reply is the cached demo reply, so the UI can label it honestly (§4, §12). */
+/**
+ * True when a receipt's reply is the cached demo reply, so the UI can label it honestly (§4, §12).
+ * The one real call the reply was recorded from (same text, `at` === capturedAt) is not a fallback.
+ */
 export function isFallbackShare(share: SiteShare): boolean {
   const cached: DemoFallbackReply | null = DEMO_FALLBACK_REPLY
-  return cached !== null && share.response === cached.response
+  return cached !== null && share.response === cached.response && share.at !== cached.capturedAt
 }

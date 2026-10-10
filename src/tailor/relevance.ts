@@ -5,6 +5,7 @@
  */
 import type { Fact, FactCategory, PageContent, Profile } from '@/types'
 import { activeFacts } from '@/profile'
+import { layoutChoiceOf } from '@/learn'
 
 const STOPWORDS = new Set(
   (
@@ -60,6 +61,8 @@ export function scoreFact(fact: Fact, page: Set<string>): number {
 export async function selectRelevantFacts(profile: Profile, content: PageContent, max = 8): Promise<Fact[]> {
   const page = pageTokens(content)
   const ranked = activeFacts(profile)
+    // Learned layout facts ('layout:specs_first') reach the rewrite as the Layout line (learn.bestLayout), not as facts.
+    .filter((fact) => layoutChoiceOf(fact) === null)
     .map((fact) => ({ fact, score: scoreFact(fact, page) }))
     .filter((r) => r.score > 0)
     .sort((a, b) => b.score - a.score || b.fact.confidence - a.fact.confidence)

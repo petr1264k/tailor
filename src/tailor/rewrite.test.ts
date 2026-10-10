@@ -108,6 +108,12 @@ describe('prompt details', () => {
     expect(buildRewriteUserPrompt(content, ru)).toContain('Language: Russian (ru)')
   })
 
+  it('adds a Layout line only when learned layout choices are given, strongest first', () => {
+    expect(buildRewriteUserPrompt(content, facts)).not.toContain('Layout:')
+    const user = buildRewriteUserPrompt(content, facts, { layout: ['specs_first', 'marketing_collapsed'] })
+    expect(user).toMatch(/\nLayout: specs first: .*; marketing collapsed: .*\n/)
+  })
+
   it('checkBlocks drops from_site and for_you/warning blocks without known facts', () => {
     expect(checkBlocks(modelBlocks, []).map((b) => b.type)).toEqual(['key_facts', 'cta'])
   })

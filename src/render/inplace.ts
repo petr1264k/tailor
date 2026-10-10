@@ -327,15 +327,20 @@ function placePin(pin: Pin, taken: Box[]): void {
     bestOverlap = overlap
     if (overlap === 0) break
   }
+  // Never above the top of a page the window scrolls. The bound is in document space (viewport y >= -scrollY), which
+  // does not move with the reader. A bound in viewport space would re-pin a note scrolled past to the viewport's top
+  // edge on every scroll frame, so it travelled with the reader instead of staying on its spot.
+  const se = document.scrollingElement
+  if (se && se.scrollHeight > se.clientHeight + 1) top = Math.max(top, -window.scrollY)
   taken.push({ left, top, right: left + w, bottom: top + h })
-  // Viewport → the host's containing block: the document (body static) or body's padding box (body positioned).
-  const body = document.body
-  const positionedBody = getComputedStyle(body).position !== 'static'
-  const b = positionedBody ? body.getBoundingClientRect() : null
-  const x = b ? left - b.left - body.clientLeft : left + window.scrollX
-  const y = b ? top - b.top - body.clientTop : top + window.scrollY
-  host.style.left = `${Math.round(x)}px`
-  host.style.top = `${Math.round(Math.max(b ? -b.top : 0, y))}px`
+  // Viewport → the host's own coordinates. Its containing block is measured, not assumed: the host sits at the
+  // block's origin plus the left/top it has now, so origin = its box minus those. Holds for a static body (the
+  // document), a positioned body (Shopify themes), a transformed body or html, and a page that scrolls in a wrapper.
+  const hr = host.getBoundingClientRect()
+  const originX = hr.left - (parseFloat(host.style.left) || 0)
+  const originY = hr.top - (parseFloat(host.style.top) || 0)
+  host.style.left = `${Math.round(left - originX)}px`
+  host.style.top = `${Math.round(top - originY)}px`
 }
 
 /** Appends the note to the overlay and places every note again (so this one lands clear of the others); `off` is `host.remove()`. */

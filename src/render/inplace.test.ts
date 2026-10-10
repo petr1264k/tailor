@@ -152,6 +152,42 @@ describe('in-place edits', () => {
     expect(onInteraction).toHaveBeenLastCalledWith({ kind: 'ignore', blockType: 'warning', factIds: ['f1'] })
   })
 
+  it('a note keeps its place in the document when the page scrolls, on a positioned body too', async () => {
+    setup()
+    document.body.style.position = 'relative' // Shopify themes do this; it used to re-pin a scrolled-past note to the viewport top
+    let scrollY = 0
+    const scrollYDesc = Object.getOwnPropertyDescriptor(window, 'scrollY')
+    Object.defineProperty(window, 'scrollY', { get: () => scrollY, configurable: true })
+    Object.defineProperty(document, 'scrollingElement', { value: { scrollHeight: 6000, clientHeight: 800 }, configurable: true })
+    // jsdom has no layout: the intro sits 1,200px down the page, the body starts at the top, and the note host sits
+    // where its left/top put it in body coordinates. All in viewport space, so they move with scrollY.
+    const rect = (x: number, y: number, w: number, h: number) =>
+      ({ x, y, left: x, top: y, width: w, height: h, right: x + w, bottom: y + h, toJSON: () => ({}) }) as DOMRect
+    const spy = vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      if (this === document.body) return rect(0, -scrollY, 1000, 6000)
+      if (this.id === 'intro') return rect(100, 1200 - scrollY, 600, 40)
+      if (this.tagName === 'TAILOR-NOTE') {
+        const el = this as HTMLElement
+        return rect(parseFloat(el.style.left) || 0, (parseFloat(el.style.top) || 0) - scrollY, 240, 80)
+      }
+      return rect(0, 0, 0, 0)
+    })
+    try {
+      renderTailored(page([{ op: 'note', after: byText('Four HDMI'), text: 'Works with your PS5.', factIds: ['f1'] }]), [ps5], ui!, target())
+      const host = hosts('tailor-note')[0]!
+      const placed = parseFloat(host.style.top)
+      expect(placed).toBeGreaterThan(1100) // document space: on the intro, not on the viewport
+      scrollY = 1500 // the intro is now 300px above the viewport
+      window.dispatchEvent(new Event('scroll'))
+      await new Promise((r) => setTimeout(r, 50))
+      expect(parseFloat(host.style.top)).toBe(placed) // stayed on its spot instead of travelling with the reader
+    } finally {
+      spy.mockRestore()
+      delete (document as { scrollingElement?: unknown }).scrollingElement
+      if (scrollYDesc) Object.defineProperty(window, 'scrollY', scrollYDesc)
+    }
+  })
+
   it('a note anchored inside a hidden part sticks to the stub, not to the hidden section', () => {
     setup()
     renderTailored(

@@ -1,8 +1,9 @@
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { Block, PageContent, Profile, TailoredPage } from '@/types'
+import type { Block, PageContent, PageEdit, Profile, TailoredPage } from '@/types'
 import { resetDbForTests } from '@/archive'
+import { getDb } from '@/archive/db'
 import { completeJson } from '@/llm/client'
 import { runFidelityGate } from '@/gate'
 import { DEFAULT_SETTINGS, type Settings } from '@/settings'
@@ -87,6 +88,28 @@ describe('cache', () => {
     expect(await getCachedTailoredPage('https://shop.example.com/tv?id=7#specs', 'mikhail', 4)).toEqual(page)
     expect(await getCachedTailoredPage(URL_, 'mikhail', 5)).toBeNull()
     expect(await getCachedTailoredPage(URL_, 'petr', 4)).toBeNull()
+  })
+
+  it('keeps the in-place edits and treats an entry from an older format as a miss', async () => {
+    const edits: PageEdit[] = [
+      { op: 'rewrite', id: 's1', text: 'Shorter headline' },
+      { op: 'note', after: 's1', text: 'Fits your PS5.', factIds: ['f-ps5'] },
+    ]
+    const page: TailoredPage = { url: URL_, profileVersion: 4, blocks: modelBlocks, gate: { checked: 2, stripped: [] }, edits }
+    await setCachedTailoredPage(page, 'mikhail')
+    expect(await getCachedTailoredPage(URL_, 'mikhail', 4)).toEqual(page)
+
+    // Written before edits existed (no format): it would render as the panel, so it is a miss and the page is re-tailored.
+    const db = await getDb()
+    await db.put('tailored', {
+      url: URL_,
+      profileVersion: 4,
+      blocks: modelBlocks,
+      gate: { checked: 2, stripped: [] },
+      key: cacheKey('mikhail', 4, URL_),
+      cachedAt: '2026-10-10T20:00:00.000Z',
+    })
+    expect(await getCachedTailoredPage(URL_, 'mikhail', 4)).toBeNull()
   })
 })
 

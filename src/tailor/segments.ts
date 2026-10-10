@@ -17,6 +17,12 @@ const TEXT_TAGS = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'li', 'blockquote', 
 const TEXT_SELECTOR = TEXT_TAGS.join(',')
 const CANDIDATE_SELECTOR = `${TEXT_SELECTOR},div`
 
+/**
+ * Links and buttons. An element whose text is all inside these (a CTA row, "Sign in · Get a demo", a list of links)
+ * is a control group, not prose: a rewrite would replace its children with one text node and the links would be gone.
+ */
+const CONTROL_SELECTOR = 'a, button, [role="button"], [role="link"], input, select, textarea'
+
 /** Inside these, nothing is a segment. */
 const SKIP_SELECTOR =
   'nav, footer, header nav, [role="navigation"], [role="contentinfo"], [role="menu"], [role="menubar"], [role="tablist"], ' +
@@ -94,6 +100,17 @@ function collectText(el: Element, skipAriaHidden: boolean): string {
   return out
 }
 
+/**
+ * True when what is left of the element's text outside its links and buttons is too short to be worth editing:
+ * the element IS its controls. A paragraph that merely contains a link is prose and stays editable.
+ */
+export function isControlGroup(el: Element): boolean {
+  if (!el.querySelector(CONTROL_SELECTOR)) return false
+  const clone = el.cloneNode(true) as Element
+  clone.querySelectorAll(CONTROL_SELECTOR).forEach((c) => c.remove())
+  return segmentText(clone).length < MIN_TEXT_CHARS
+}
+
 /** True when `el` should be a segment: a visible text leaf outside skipped regions, long enough to matter. */
 function qualifies(el: Element, tag: string): boolean {
   if (el.closest(SKIP_SELECTOR)) return false
@@ -103,6 +120,7 @@ function qualifies(el: Element, tag: string): boolean {
   // Not a leaf: an inner candidate will be the segment instead.
   if (el.querySelector(TEXT_SELECTOR)) return false
   if (tag === 'div' && el.closest(TEXT_SELECTOR)) return false // a div inside a <li> or <td>: the li/td is the segment
+  if (isControlGroup(el)) return false
   if (!isVisible(el)) return false
   return true
 }

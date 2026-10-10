@@ -19,6 +19,8 @@ export interface CachedTailoredPage extends TailoredPage {
   /** `${profileId}|${profileVersion}|${url}` */
   key: string
   cachedAt: string
+  /** src/tailor/cache.ts CACHE_FORMAT. Entries without it (or with an older number) are treated as misses. */
+  format?: number
 }
 
 export interface TailorDB extends DBSchema {

@@ -67,6 +67,18 @@ describe('collectSegments', () => {
     expect(collectSegments(doc).segments.map((s) => s.text)).toEqual(['The one visible paragraph.'])
   })
 
+  it('skips elements whose text is all links or buttons; prose that merely contains a link stays', () => {
+    const doc = dom(`
+      <div class="actions"><a href="/signin">Sign in</a><a href="/demo">Get a demo</a></div>
+      <ul><li><a href="/a">Experiment ideas</a></li><li><a href="/b">Design variations</a></li></ul>
+      <p>Read the <a href="/docs">docs</a> before you start building.</p>
+      <a href="/card"><h3>Card title inside a link</h3></a>`)
+    expect(collectSegments(doc).segments.map((s) => `${s.tag}:${s.text}`)).toEqual([
+      'p:Read the docs before you start building.',
+      'h3:Card title inside a link',
+    ])
+  })
+
   it('resolveSegment returns the remembered element while connected, else re-finds it by tag and text', () => {
     const doc = dom(`<p>Stable paragraph text here.</p>`)
     const { segments, elements } = collectSegments(doc)

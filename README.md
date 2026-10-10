@@ -22,8 +22,8 @@ Other scripts: `npm run build`, `npm run typecheck`, `npm run test`, `npm run ev
 ## How it works
 
 ```
-import → extract → filter → profile → tailor → fidelity gate → render → learn → share
-  §3.1     §3.2      §3.3     §3.4     §3.5       §3.6          §3.7     §3.8    §3.9
+import → extract → profile → tailor → fidelity gate → render → learn → share
+  §3.1     §3.2      §3.4     §3.5       §3.6          §3.7     §3.8    §3.9
 ```
 
 - **Local-first.** The archive and the profile stay in the browser. No server, no account.

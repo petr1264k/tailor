@@ -6,7 +6,7 @@ Fallbacks for everything: offline copies (`demo/pages/`), cached tailored versio
 ## Before going on (5 min)
 
 - [ ] Clean Chrome profile, Developer mode on, `dist/` loaded, "Allow access to file URLs" on, API key set in the popup.
-- [ ] Both owners reviewed their profiles today (keep/delete). Active profile: Mikhail.
+- [ ] Both owners reviewed every fact and quote today (keep/delete) and deleted anything they do not want on a projector. Nothing filters health, finances, other people's names or similar topics any more, so this review is the only guard. Active profile: Mikhail.
 - [ ] Every demo page tailored once for each profile (cache warm). Offline copies open in tabs, in order.
 - [ ] Numbers filled from `eval/out/*.md` on one slide, each with its N.
 - [ ] Backup video open in a paused tab. Notifications off, font size up, Wi-Fi joined (but nothing depends on it).

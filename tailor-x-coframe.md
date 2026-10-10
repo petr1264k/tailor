@@ -7,7 +7,7 @@ Coframe's core product is a managed optimization service for site owners, so a v
 **Make "share with sites" a must-have, and build it only for coframe.com.** It's one request, and most of the work already exists: the rewrite step picks the few facts that matter for each page. The flow:
 
 1. Turn those facts into a one- or two-sentence needs string.
-2. Run it through the sensitive filter.
+2. Scrub it: never other people's names, emails or phone numbers (`scrubForSharing`).
 3. Show it word for word in a consent sheet.
 4. Send it with the agent name "Tailor".
 5. Show the site's reply as a labeled block in the tailored page.

@@ -130,6 +130,8 @@ describe('mergeCandidates (reduce step)', () => {
     ])
     const call = mockComplete.mock.calls[0][0]
     expect(call).toMatchObject({ role: 'merge', effort: 'medium', schema: MergedFactsOutputSchema })
+    // No topic exclusions in the merge prompt either.
+    expect(call.system).not.toMatch(/health|religion|politics|sexuality|exact location|finances/i)
     expect(call.user).toContain('[0] owns | owns a PS5 | "just got a PS5" | 2026-09-01 | claude')
   })
 

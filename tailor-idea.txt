@@ -1,0 +1,246 @@
+TAILOR (working name)
+The web, rewritten for the one person reading it.
+The Living Internet Build Day · AGI House × Coframe · Sat Oct 10 2026
+Team: Petr (frontend), Mikhail (ex-unicorn CTO), + one LLM-agent engineer recruited at 12:00
+
+========================================================================
+ONE-LINER
+========================================================================
+Your AI chats already know you. Tailor turns your ChatGPT and Claude history into a private preference profile, and a Chrome extension rewrites any web page for you. It learns from how you use each page, and it never invents a single fact.
+
+
+========================================================================
+THE PROBLEM
+========================================================================
+- Websites personalize for segments ("electronics shopper, 25-44"), built from cookies and guesses. None of them knows you.
+- Your AI assistants do. Over months you have told ChatGPT and Claude your gear, your budget, your diet, your job, your stack, and how you like things explained. That knowledge is locked inside each company's app, and no website can use it.
+- So every page you visit is written for the average visitor. You still dig through marketing copy, specs that don't matter to you, and examples in the wrong language or at the wrong level.
+
+
+========================================================================
+THE INSIGHT
+========================================================================
+Your AI chat history is the most accurate description of you that exists: thousands of messages of real intent, in your own words. Browsing history shows what you clicked. Your chats show what you wanted and why. And you can already export it through the official export features.
+
+
+========================================================================
+HOW IT WORKS
+========================================================================
+1. IMPORT
+   You export your data from ChatGPT (Settings > Data controls > Export data) and/or Claude (Settings > Privacy > Export data). You drop conversations.json into the extension. We take that one file, not the whole zip, because exports can be gigabytes once images and voice notes are included. The extension keeps only your own messages, since that's where preferences live, and stores them locally in the browser.
+
+2. EXTRACT
+   A cheap, fast model (Claude Haiku 5.5) reads your messages in chunks and proposes candidate preferences, each with a short supporting quote. A second pass merges duplicates and scores each fact by how often and how recently it appears. A large archive costs about a dollar to process.
+
+3. FILTER
+   Sensitive topics are never extracted: health, religion, politics, sexuality, exact location, detailed finances, and other people's names. Code and a classifier both enforce this, and the UI shows a "never extracted" list with counts.
+
+4. PROFILE
+   You see your profile as a list of facts. Each one shows where it came from ("ChatGPT, Aug 3: 'just got a PS5, which TV should I get?'"). You can keep, edit or delete any fact. The profile is grouped by source, so you can see what ChatGPT knows about you, what Claude knows, and where they overlap.
+   Example facts: owns a PS5 · big purchases around $1,000 · prefers short answers and bullet points · writes TypeScript · vegetarian · chats in Russian · asks for simple explanations about finance.
+
+5. TAILOR
+   On any page, the extension extracts the main content (Mozilla Readability, plus structured product/recipe/article data the page embeds). It sends that content and ONLY the profile facts relevant to this page to a fast model. The model returns a page built from a fixed set of components, not free-form HTML, so nothing breaks:
+     - summary: one line, written for you
+     - "for you" notes: tie a page fact to your situation ("Works with your PS5: 2 HDMI 2.1 ports, 120 Hz")
+     - key facts table: the specs that matter to you, first
+     - compare table, steps, warnings (e.g. an allergen if you mentioned one)
+     - reordered original sections
+     - collapsed fluff, each with a reason ("marketing copy collapsed: you prefer short answers")
+     - links: only links that exist on the original page
+   It's written in the language you chat in, at the reading level you ask for.
+   Rewriting starts as soon as the page loads, so clicking Tailor feels instant. Results are cached per page and profile version.
+
+6. FIDELITY GATE (code only, no model)
+   Before anything is shown, code pulls every number, price, spec, model name and quoted claim out of the rewritten page and checks that each one appears in the original page. Anything that doesn't is stripped and counted. Facts that come from your own profile (like your budget) are labeled as yours. Rule of thumb: the model proposes, code decides.
+
+7. RENDER IN PLACE
+   The page rewrites itself in place, isolated so the site's styles don't clash. A floating switch flips between Original and Tailored. Every change has a "why" chip that opens the exact quote from your chats.
+
+8. LEARN (the loop)
+   Every tailored page watches how you use it:
+     - you expand a collapsed section
+     - you flip back to the original
+     - you open a "why" chip
+     - you ignore a "for you" note
+     - you spend time on a block
+   These signals update your profile. New behavior-based facts appear next to the chat-based ones, with their own evidence ("learned on shop.example, Oct 10: expanded specs twice"). The next page comes out differently. The interface keeps optimizing itself for the one person using it.
+
+
+========================================================================
+WHAT MAKES IT DIFFERENT
+========================================================================
+- vs. reader mode and AI summarizers: they don't know you. Tailor reorders, filters and explains for your situation, cites why, and needs no setup.
+- vs. AI assistants and browsers that remember you: they keep your profile locked inside one company and answer in a chat sidebar. Tailor merges your ChatGPT AND Claude history into a profile you own, rewrites the page itself, and checks every fact against the original.
+- vs. earlier "reshape the web" extensions (built at AGI House before; DonnaOS didn't make the finals, EnableOS won only on its accessibility angle): Tailor needs no setup, shows evidence for every change, has a code-checked fidelity guarantee, learns from use, and comes with measured results.
+- vs. site-side personalization (Coframe, Mutiny): sites optimize for segments. Tailor is the last mile for one person, on every site.
+
+
+========================================================================
+TRUST AND PRIVACY
+========================================================================
+- Local-first: the archive and profile live in your browser. There's no server and no account.
+- Minimum sharing: each page gets only the few facts relevant to it.
+- Sensitive topics are never extracted, and you see the list of what was skipped.
+- Every fact is editable and deletable, with a source quote.
+- The fidelity gate guarantees no invented numbers, prices or specs.
+- On stage we show only owner-approved facts and short quotes, never raw chats.
+
+
+========================================================================
+STRETCH FEATURES (only if the core is done by 17:00)
+========================================================================
+- Agent handoff: the extension exposes a tool like get_preferences_for(page), so your own AI agent can use your profile (with your consent) while it browses or shops for you. This covers the event's second theme, agents as first-class users. (The browser's WebMCP API name is in flux; check Chrome's docs first, or use an MCP server.)
+- Share with sites: one tap shares three consented facts with a site that asks for them. Coframe's own site already has a share_visitor_needs tool that asks agents for exactly this.
+- Living profile: a content script on chatgpt.com and claude.ai adds new chats to your archive as you have them, so the profile updates without re-exporting.
+- Tailor a judge-suggested URL live.
+- Gemini import (Google Takeout).
+
+Not building: accounts, syncing, mobile, payments.
+
+
+========================================================================
+THE NUMBERS WE'LL SHOW (all measured on the day, N stated out loud)
+========================================================================
+1. Questions answered on the first screen (the main number).
+   For each person and page, generate 5 questions that person would actually ask, based on their profile ("Does this TV work with my PS5?"). The answer must be text copied exactly from the page; code verifies this. Then code checks whether each answer appears on the first screen of the original page versus the tailored page.
+   Example result: "1 of 5 on the original, 5 of 5 tailored." 4 pages × 2 people × 5 questions = 40 checks.
+2. Profile precision: each owner marks every extracted fact right or wrong (5 minutes per person).
+3. Blind test: for 5 pages, show each person a version tailored to them and one tailored to a teammate, unlabeled. They pick theirs X of Y times (guessing gets 50%).
+4. Invented facts shown to users: 0. Plus how many unsupported claims the gate caught and stripped.
+5. Speed: time to first tailored content, and words before vs. after.
+6. Learning: how the profile changed after N interactions, and how the next page differed.
+
+
+========================================================================
+THE 3-MINUTE DEMO
+========================================================================
+0:00-0:20  Hook. "Every site personalizes for a segment. None of them knows you. Your AI does." Show Mikhail's archive: N conversations, M messages, two sources. Show the split view: what ChatGPT knows, what Claude knows, the overlap. "Your data is locked in separate apps."
+0:20-0:45  Profile. Facts with source quotes. Delete one live. Show the "never extracted" list.
+0:45-1:30  Tailor. Open a TV product page as everyone sees it. Click Tailor: the page rewrites itself. "For you" notes, his PS5 setup first, budget checked, marketing copy collapsed. Hover a "why" chip to show the quote. Flip original ↔ tailored.
+1:30-1:55  Learning loop. Expand the collapsed specs twice. The profile updates on screen ("wants more spec detail than his chats suggested"). Open the next product: specs come first now.
+1:55-2:15  Second person. Same page with Petr's profile: a different page. If one of you chats in another language, it comes back in that language.
+2:15-2:35  Trust. "It can't make anything up. The model wrote '120 Hz on all four HDMI ports'. The page never says that, so code stripped it." Gate log: checked N, stripped X, shown 0.
+2:35-3:00  Numbers: questions answered on the first screen (before vs. after), profile precision, blind test, 0 invented facts. Close: "Sites optimize for segments. Tailor is the last mile for the one person reading. Next, you'll share three consented facts with any site that asks, which is exactly what Coframe's own share_visitor_needs tool requests."
+
+Fallbacks: cached tailored versions and offline copies of every demo page; a backup video recorded by 17:00.
+
+
+========================================================================
+THE 30-SECOND PITCH (12:00, recruiting; 73 words)
+========================================================================
+0:00-0:09  "Websites personalize for segments. None of them knows you. Your AI does: thousands of chats about your gear, your budget, how you read."
+0:09-0:18  "Tailor turns your ChatGPT and Claude history into a private profile, and a Chrome extension rewrites any page for you."
+0:18-0:24  "Every change cites your own words, and code checks every fact against the page."
+0:24-0:30  "Frontend builder plus ex-unicorn CTO. We need one engineer who's shipped LLM agents. Find us after."
+
+
+========================================================================
+WHY IT FITS THIS EVENT AND THESE JUDGES
+========================================================================
+Theme: "interfaces that adapt and rewrite themselves in real time... adapting to every visitor." Tailor does this from the visitor's side, for one person, on every site. The learning loop closes the loop AGI House's primer asks for: "The products that win close the loop. They measure the effect of their changes."
+
+Josh Payne (Coframe CEO, keynote): "Every piece of copy out there and every piece of UI should have a KPI that is actively optimizing itself for that specific person who is on it." Tailor does this for the specific person, from their side.
+
+Aleksey Korshuk (Coframe Head of ML, judge): his research trained chatbots on real user-engagement signals. Tailor's profile learns from engagement signals, and the first-screen check is a real eval.
+
+Pavlo Razumovskyi (Coframe co-founder / VP Eng, judge): built generative AI at Pinterest, a product built on visual taste. He'll care about polished, instant, low-friction UX and robustness (fallbacks, caching, the fidelity gate).
+
+Kazuki Nakayashiki (Glasp CEO, judge): ships consumer Chrome extensions to millions of users and builds AI clones of people from their own highlights. Tailor is his world.
+
+Nicole Wong (Stanford researcher, judge): measured method. Profile precision, a blind test against chance, a deterministic first-screen check, and zero invented facts.
+
+Roland Gavrilescu (Introspection CEO, keynote): "The loop is the product." Signals (your chats and your behavior) feed the profile, and the profile shapes every page.
+
+
+========================================================================
+BUILD PLAN
+========================================================================
+Stack
+- Chrome extension (Manifest V3), TypeScript, Vite with @crxjs/vite-plugin, React for the import screen and profile viewer, and plain DOM in a shadow root for the in-page render.
+- IndexedDB for the archive (request the unlimitedStorage permission).
+- Libraries: jszip (only if we accept zips), @mozilla/readability.
+- Models: Haiku 5.5 for extraction, Sonnet 5.5 for merging, and Haiku 5.5 or Gemini 3.5 Flash-Lite for rewriting (whichever is faster on the day).
+- API calls from the extension's background script. For browser-side calls to Anthropic's API, set the header anthropic-dangerous-direct-browser-access: true. A tiny local proxy is the fallback.
+
+Who builds what
+- Petr: extension shell, import screen, profile viewer (grouped by source), in-page renderer, original/tailored switch, "why" chips, rewrite animation, backup video, README visuals.
+- Mikhail: ChatGPT and Claude parsers, local archive, extraction and merging, sensitive filter, fidelity gate, caching and pre-tailoring, learning-loop updates, measurement harness.
+- Recruit: extraction and rewrite prompts, relevance selection, language and reading level, streaming speed, the first-screen eval and the blind test.
+- If it's only the two of us: Mikhail also takes the prompts, Claude import becomes a stretch goal, and the side panel is cut.
+
+Timeline (must-haves first)
+- 12:15  Freeze the data formats below. Create the repo. Load an empty extension in Chrome.
+- 14:30  MUST work end to end: ChatGPT conversations.json → your messages → extraction on a sample → profile with evidence → Tailor button on one demo page → tailored render → switch back to the original.
+- 17:00  SHOULD be done: Claude import; full extraction; profile viewer with keep/delete and the source split; sensitive filter; fidelity gate with counts; "why" chips; learning loop; language and reading level; 4 tested demo pages with offline copies; second profile; caching and pre-tailoring; the first-screen check and blind test run. Record backup video #1.
+- 17:30  Feature freeze.
+- 18:45  Draft saved, with the video as the main link.
+
+Demo pages (pick and save by 16:00)
+1. A long product page (TV or laptop).
+2. A dense docs page (examples reordered for your stack and level).
+3. A recipe page (diet, allergens, cooking time).
+4. A long SaaS landing page. Bold option: coframe.com, tailored for a CTO vs. a frontend designer, in front of the Coframe judges.
+
+Data formats (freeze at 12:15)
+  Fact = {
+    id, category: reading | visual | language | expertise | interest | constraint | owns | dislikes | goal,
+    value: "prefers bullet points over prose",
+    confidence: 0..1,
+    source: "chat" | "behavior",
+    evidence: [{ origin: chatgpt | claude | page-url, title, date, quote }],
+    userStatus?: kept | deleted | edited
+  }
+  Profile = { version, facts: Fact[], stats: { conversations, messages, from, to } }
+  Block = summary | for_you(text, factIds) | key_facts(rows) | compare(columns, rows) | steps(items)
+        | warning(text, factIds) | section(heading, text) | hidden(label, reason) | cta(label, href on the original page)
+  TailoredPage = { url, profileVersion, blocks: Block[], gate: { checked, stripped[] } }
+  Interaction = { url, profileVersion, kind: expand | collapse | toggle_original | open_why | ignore | dwell, blockType, factIds?, ms?, at }
+
+
+========================================================================
+RISKS AND HOW WE HANDLE THEM
+========================================================================
+- Exports arrive late (they're emailed and can take hours) → request them tonight, both of us.
+- Huge archives → import conversations.json only, your own messages only, the last 6-12 months, a token cap; run extraction in the afternoon.
+- Messy real pages → Readability + embedded structured data; 4 tested demo pages with offline copies; "any URL" only as a stretch.
+- Slow rewrites → fast model, compact output, streaming, pre-tailor on page load, cache.
+- Personal chats on a projector → owner-approved facts and short quotes only; each owner reviews their profile before 19:30.
+- "It's just another reshape-the-web extension" → lead with the AI-history profile, the evidence links, the learning loop, the fidelity gate and the numbers.
+- "Doesn't ChatGPT memory already do this?" → the answer in "What makes it different" above.
+- Rules → everything is built at the event; nothing comes from any pre-existing project.
+
+
+========================================================================
+Q&A CHEAT SHEET
+========================================================================
+Privacy? Local-first, minimum sharing per page, sensitive topics never extracted, delete anything in one click, no server.
+Just a summarizer? A summarizer doesn't know you. Tailor uses your context, cites why, needs no setup, and learns from use. The blind test shows people recognize their own page.
+Hallucinations? The fidelity gate checks every number, price and spec against the original page and strips the rest. We showed the count.
+Doesn't ChatGPT memory do this? It stays inside one company and answers in a sidebar. Tailor merges ChatGPT and Claude into a profile you own and rewrites the page itself, with a fact check.
+How does this help site owners / Coframe? Sites optimize for segments; this is the last mile for one person. Next: consented sharing of three facts with any site that asks, like Coframe's own share_visitor_needs.
+Why chats, not browsing history? Browsing shows what you clicked. Chats show what you wanted and why, in your own words, and they keep updating.
+How do you know the profile is right? Owners rated every fact (precision [P]%), plus the blind test and the first-screen check.
+What if it's slow or wrong? The original is one click away; rewrites stream and are cached; unsupported claims are stripped.
+Is using the exports allowed? It's your own data, exported through the official export feature.
+Built today? Yes. The night before we only planned, made mockups and requested our data exports.
+Business? A consumer extension distributed like Glasp, plus an API that lets sites accept consented profiles.
+
+
+========================================================================
+SUBMISSION TEXT (draft; fill in real numbers at 18:30)
+========================================================================
+Tailor: the web, rewritten for the one person reading it.
+Websites personalize for segments, but your AI assistants already know you: thousands of messages about your gear, budget, expertise and how you like to read. Tailor turns your ChatGPT and Claude exports into a private, local preference profile in which every fact cites the conversation it came from. Sensitive topics are never extracted, and you can delete anything. A Chrome extension rewrites any page for you, in your language and at your level: it surfaces what matters to your situation, reorders specs, collapses fluff, and explains each change with a link back to your own words. It also learns from how you use each page, so the next one fits better. A code-only fidelity gate checks every number, price and spec against the original page: across [N] tailored pages it caught [X] unsupported claims and showed 0. Questions each person would actually ask were answered on the first screen [a] of [n] times on the original pages and [b] of [n] times on the tailored ones. Owners rated [P]% of extracted preferences correct, and in a blind test picked the page tailored to them [A] of [B] times (chance: 50%).
+Video: [link] · Repo: [link]
+
+
+========================================================================
+TONIGHT AND THE MORNING OF
+========================================================================
+- Request ChatGPT and Claude exports NOW (both of us). Download them as soon as the emails arrive.
+- Each person writes down topics that must never appear on stage.
+- Test API keys (Anthropic, Google AI Studio, OpenRouter as a fallback). Turn on Developer mode in Chrome. Set up a clean Chrome profile for the demo.
+- Don't write product code before the event. An empty scaffold at most.
+- Leave SF 08:45-09:30; park on the golf-course side of Eucalyptus St by 09:40.
+- The real deadline is 7:00 pm: finalists are picked from saved drafts. Save by 18:45.

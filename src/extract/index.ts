@@ -35,6 +35,11 @@ export interface VerifiedCandidate extends CandidateFact {
 const DEFAULT_CHUNK_TOKENS = 6000
 const DEFAULT_MAX_CHUNKS = 40
 const MAP_CONCURRENCY = 4
+/** After a 429 burst, how long to wait before retrying the rate-limited chunks one at a time. */
+const RATE_LIMIT_PAUSE_MS = 15_000
+
+/** LlmError('rate_limit') by shape, so tests that mock the client module still work. */
+const isRateLimit = (e: unknown): boolean => e instanceof Error && (e as { code?: unknown }).code === 'rate_limit'
 /** Long pastes (code, docs) say little about the person; only the head goes into the prompt. Quotes still verify. */
 const MAX_MESSAGE_CHARS = 2000
 const MAX_QUOTE_CHARS = 200
@@ -344,9 +349,27 @@ export async function extractFacts(
   const errors: unknown[] = []
   onProgress?.(0, chunks.length, 'map')
   let next = 0
+  const rateLimited: typeof chunks = []
   const worker = async () => {
     while (next < chunks.length) {
-      const chunk = chunks[next++]
+      const chunk = chunks[next++]!
+      try {
+        const r = await proposeAndVerify(chunk)
+        proposed += r.proposed
+        verified.push(...r.verified)
+      } catch (e) {
+        // A rate-limited chunk is not lost: it is retried once, serially, after the burst (below).
+        if (isRateLimit(e)) rateLimited.push(chunk)
+        else errors.push(e)
+      }
+      onProgress?.(++done, chunks.length, 'map')
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(MAP_CONCURRENCY, chunks.length) }, worker))
+  if (rateLimited.length) {
+    console.warn(`[tailor] extract: ${rateLimited.length}/${chunks.length} chunks were rate limited; retrying them one at a time after ${RATE_LIMIT_PAUSE_MS} ms`)
+    await new Promise((r) => setTimeout(r, RATE_LIMIT_PAUSE_MS))
+    for (const chunk of rateLimited) {
       try {
         const r = await proposeAndVerify(chunk)
         proposed += r.proposed
@@ -354,12 +377,14 @@ export async function extractFacts(
       } catch (e) {
         errors.push(e)
       }
-      onProgress?.(++done, chunks.length, 'map')
     }
   }
-  await Promise.all(Array.from({ length: Math.min(MAP_CONCURRENCY, chunks.length) }, worker))
   if (chunks.length > 0 && errors.length === chunks.length) throw errors[0]
-  if (errors.length) console.warn(`[tailor] extract: ${errors.length}/${chunks.length} chunks failed and were skipped`)
+  if (errors.length) {
+    const first = errors[0]
+    const why = first instanceof Error ? `${first.name}: ${first.message}` : String(first)
+    console.warn(`[tailor] extract: ${errors.length}/${chunks.length} chunks failed and were skipped. First error: ${why}`)
+  }
 
   onProgress?.(0, 1, 'reduce')
   const facts = await mergeCandidates(verified)

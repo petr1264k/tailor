@@ -45,3 +45,25 @@ chrome.runtime.onMessage.addListener((msg: Request, sender, sendResponse) => {
 chrome.runtime.onInstalled.addListener(() => {
   console.log('[tailor] installed', chrome.runtime.getManifest().version)
 })
+
+// chrome://extensions keeps only the TEXT of what reaches the error log (objects show as "[object Object]"), so every
+// uncaught error and rejection in the worker is re-logged as one line that names the error and its message.
+function errorLine(reason: unknown): string {
+  if (reason instanceof Error) return `${reason.name}: ${reason.message}`
+  if (typeof reason === 'object' && reason !== null) {
+    try {
+      return JSON.stringify(reason).slice(0, 500)
+    } catch {
+      return Object.prototype.toString.call(reason)
+    }
+  }
+  return String(reason)
+}
+self.addEventListener('unhandledrejection', (event) => {
+  event.preventDefault()
+  console.error(`[tailor] unhandled rejection: ${errorLine((event as PromiseRejectionEvent).reason)}`)
+})
+self.addEventListener('error', (event) => {
+  const e = event as ErrorEvent
+  console.error(`[tailor] uncaught error: ${errorLine(e.error ?? e.message)}`)
+})

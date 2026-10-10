@@ -47,7 +47,9 @@ export async function getClient(): Promise<Anthropic> {
   const client = new Anthropic({
     apiKey: anthropicKey,
     dangerouslyAllowBrowser: true,
-    maxRetries: 2,
+    // The SDK retries 408/409/429/5xx with exponential backoff and honours retry-after. Extraction fires MAP_CONCURRENCY
+    // Haiku calls at once, so a 429 burst is normal; 4 retries ride it out instead of dropping the chunk.
+    maxRetries: 4,
     // Org-level keys must name a workspace; workspace-scoped keys ignore this header.
     ...(workspaceId ? { defaultHeaders: { 'anthropic-workspace-id': workspaceId } } : {}),
   })
@@ -89,8 +91,19 @@ export function extractJson(text: string): unknown {
 
 /** One line of text for an SDK error: "400 This API key is not scoped to a workspace… (request-id req_…)". */
 export function describeApiError(e: unknown): string {
-  if (e instanceof Anthropic.APIError) return e.requestID ? `${e.message} (request-id ${e.requestID})` : e.message
+  if (e instanceof Anthropic.APIError) {
+    const status = e.status ? `HTTP ${e.status}: ` : ''
+    const text = e.message.startsWith(String(e.status ?? '')) ? e.message : `${status}${e.message}`
+    return e.requestID ? `${text} (request-id ${e.requestID})` : text
+  }
   if (e instanceof Error) return `${e.name}: ${e.message}`
+  if (typeof e === 'object' && e !== null) {
+    try {
+      return JSON.stringify(e).slice(0, 500)
+    } catch {
+      return Object.prototype.toString.call(e)
+    }
+  }
   return String(e)
 }
 

@@ -5,7 +5,7 @@
  * the type-level assertion at the bottom fails the build if they drift.
  */
 import { z } from 'zod'
-import type { Block, FactCategory } from './types'
+import type { Block, FactCategory, PageEdit } from './types'
 import { FACT_CATEGORIES } from './types'
 
 export const FactCategorySchema = z.enum(FACT_CATEGORIES as [FactCategory, ...FactCategory[]])
@@ -31,6 +31,20 @@ export const RewriteOutputSchema = z.object({
   blocks: z.array(BlockSchema).min(1).max(40),
 })
 export type RewriteOutput = z.infer<typeof RewriteOutputSchema>
+
+/** In-place edits keyed to PageSegment ids (types.ts PageEdit). The type-level lock at the bottom keeps them in sync. */
+export const PageEditSchema = z.discriminatedUnion('op', [
+  z.object({ op: z.literal('rewrite'), id: z.string(), text: z.string(), factIds: z.array(z.string()).optional() }),
+  z.object({ op: z.literal('hide'), ids: z.array(z.string()), label: z.string(), reason: z.string() }),
+  z.object({ op: z.literal('note'), after: z.string(), text: z.string(), factIds: z.array(z.string()) }),
+  z.object({ op: z.literal('warn'), after: z.string(), text: z.string(), factIds: z.array(z.string()) }),
+])
+
+/** What the in-place edit model must return (§3.5, §3.7). An empty list is valid: the page is already right for this person. */
+export const EditOutputSchema = z.object({
+  edits: z.array(PageEditSchema).max(80),
+})
+export type EditOutput = z.infer<typeof EditOutputSchema>
 
 /** What the Haiku "map" step proposes per chunk (§3.2). Code assigns ids, dates and origins; the model never does. */
 export const CandidateFactSchema = z.object({
@@ -93,3 +107,6 @@ type SchemaBlock = z.infer<typeof BlockSchema>
 type MutuallyAssignable<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never
 const _blockSchemaMatchesFrozenType: MutuallyAssignable<SchemaBlock, Block> = true
 void _blockSchemaMatchesFrozenType
+type SchemaEdit = z.infer<typeof PageEditSchema>
+const _editSchemaMatchesType: MutuallyAssignable<SchemaEdit, PageEdit> = true
+void _editSchemaMatchesType

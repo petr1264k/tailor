@@ -38,6 +38,7 @@ const page: PageContent = {
   jsonLd: [],
   links: [{ text: 'Buy now', href: 'https://example.com/tv/qn90d/buy' }],
   source: 'raw',
+  segments: [],
   lang: 'en',
 }
 

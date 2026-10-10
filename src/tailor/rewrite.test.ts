@@ -30,6 +30,7 @@ const content: PageContent = {
     { text: '', href: 'https://shop.example.com/x' },
   ],
   source: 'readability',
+  segments: [],
   lang: 'en',
 }
 

@@ -22,7 +22,6 @@ async function activeTabId(): Promise<number | undefined> {
 
 export function App() {
   const [key, setKey] = useState('')
-  const [workspaceId, setWorkspaceId] = useState('')
   const [saved, setSaved] = useState(false)
   const [apiTest, setApiTest] = useState<string | null>(null)
   const [profileName, setProfileName] = useState('')
@@ -36,7 +35,6 @@ export function App() {
       const s = await attempt(getSettings)
       if (!s.ok) return setError(s.error)
       setKey(s.value.anthropicKey ?? '')
-      setWorkspaceId(s.value.anthropicWorkspaceId ?? '')
       setPretailor(s.value.pretailorOnLoad)
       setProfileName(s.value.activeProfileId)
       const list = await attempt(listProfiles)
@@ -67,7 +65,7 @@ export function App() {
 
   async function saveKey() {
     const r = await attempt(() =>
-      setSettings({ anthropicKey: key.trim() || undefined, anthropicWorkspaceId: workspaceId.trim() || undefined }),
+      setSettings({ anthropicKey: key.trim() || undefined }),
     )
     if (r.ok) setSaved(true)
     else setError(r.error)
@@ -133,17 +131,6 @@ export function App() {
             setSaved(false)
           }}
           placeholder="sk-ant-…"
-        />
-      </label>
-      <label style={{ display: 'grid', gap: 4 }}>
-        <span>Workspace ID (only if the key is an org-level key; console → Settings → Workspaces)</span>
-        <input
-          value={workspaceId}
-          onChange={(e) => {
-            setWorkspaceId(e.target.value)
-            setSaved(false)
-          }}
-          placeholder="wrkspc_…"
         />
       </label>
       <button onClick={() => void saveKey()}>{saved ? 'Saved' : 'Save key'}</button>

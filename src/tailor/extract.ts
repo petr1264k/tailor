@@ -8,6 +8,10 @@
 import { Readability } from '@mozilla/readability'
 import type { PageContent, PageLink } from '@/types'
 import { readAgentHooks } from '@/share/hooks'
+import { collectSegments } from './segments'
+
+export { collectSegments, resolveSegment, segmentText } from './segments'
+export type { SegmentedPage } from './segments'
 
 /** Readability text shorter than this is treated as a failed parse; we fall back to the raw body text. */
 export const MIN_READABLE_CHARS = 200
@@ -96,9 +100,21 @@ export function readLinks(doc: Document, pageUrl: string): PageLink[] {
   return Array.from(byHref, ([href, text]) => ({ text, href }))
 }
 
-/** Runs in the content script. Readability + JSON-LD + visible text + links (+ coframe agent hooks via share.readAgentHooks). */
+/** What the content script keeps: the PageContent it sends plus the live elements behind each segment (never sent). */
+export interface ExtractedPage {
+  content: PageContent
+  elements: Map<string, Element>
+}
+
+/** Runs in the content script. Readability + JSON-LD + visible text + links + segments (+ coframe agent hooks). */
 export function extractPageContent(doc: Document, url: string): PageContent {
+  return extractPage(doc, url).content
+}
+
+/** extractPageContent plus the id → Element map the in-place renderer needs (§3.7). */
+export function extractPage(doc: Document, url: string): ExtractedPage {
   const visibleText = visibleTextOf(doc)
+  const segmented = collectSegments(doc)
 
   // Readability mutates the document it parses, so it always gets a clone.
   let article: ReturnType<Readability['parse']> = null
@@ -121,8 +137,9 @@ export function extractPageContent(doc: Document, url: string): PageContent {
     jsonLd: readJsonLd(doc),
     links: readLinks(doc, url),
     source: useReadability ? 'readability' : 'raw',
+    segments: segmented.segments,
   }
   if (agentHooks) content.agentHooks = agentHooks
   if (lang) content.lang = lang
-  return content
+  return { content, elements: segmented.elements }
 }

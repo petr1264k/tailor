@@ -29,6 +29,7 @@ const content: PageContent = {
   jsonLd: [],
   links: [{ text: 'Buy', href: 'https://shop.example.com/cart' }],
   source: 'readability',
+  segments: [],
   lang: 'en',
 }
 

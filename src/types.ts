@@ -133,6 +133,12 @@ export interface TailoredPage {
   profileVersion: number
   blocks: Block[]
   gate: GateResult
+  /**
+   * ADDED 2:05 pm PT Oct 10 (additive, optional): in-place edits to the page's own elements (see PageEdit below).
+   * When present, the renderer applies these to the site's DOM; `blocks` is then a derived projection of the same
+   * edits (notes → for_you, warnings → warning, hides → hidden, rewrites → section) for share, learn and the eval.
+   */
+  edits?: PageEdit[]
 }
 
 /** The receipt shown in the profile after sharing with a site. */
@@ -217,6 +223,33 @@ export interface CoframeAgentHooks {
   rawSection?: string
 }
 
+/**
+ * One editable text element on the live page: a heading, paragraph, list item or text leaf (src/tailor/segments.ts).
+ * Ids are `s1`, `s2`, ... in document order. The content script keeps the id → Element map; only this goes to the model.
+ */
+export interface PageSegment {
+  id: string
+  /** Lowercase tag name: h1, p, li, div, ... */
+  tag: string
+  /** Visible text of the element, whitespace collapsed. Untrusted website text. */
+  text: string
+}
+
+/**
+ * An edit to the live page, keyed to PageSegment ids. The model proposes these (EditOutputSchema), code checks them
+ * (tailor.checkEdits, then gate.runEditGate) and the renderer applies them to the site's own DOM (§3.7, in place).
+ * - rewrite: replace the element's text (same element, same site styles). Page facts only; optional factIds say why.
+ * - hide: collapse a group of elements into a one-line stub where they stood. label names it, reason says why.
+ * - note / warn: a personal note inserted right after the anchor element, citing the facts it relies on.
+ */
+export type PageEdit =
+  | { op: 'rewrite'; id: string; text: string; factIds?: string[] }
+  | { op: 'hide'; ids: string[]; label: string; reason: string }
+  | { op: 'note'; after: string; text: string; factIds: string[] }
+  | { op: 'warn'; after: string; text: string; factIds: string[] }
+
+export type PageEditOp = PageEdit['op']
+
 /** What the content script extracts from a page and sends to the background. */
 export interface PageContent {
   url: string
@@ -229,6 +262,8 @@ export interface PageContent {
   jsonLd: unknown[]
   links: PageLink[]
   source: 'readability' | 'agent-markdown' | 'raw'
+  /** Editable text elements of the live page, in document order (src/tailor/segments.ts). Empty when none were found. */
+  segments: PageSegment[]
   /** Present only on pages that offer agent hooks (coframe.com). */
   agentHooks?: CoframeAgentHooks
   /** Language detected on the page (BCP 47), used to hold language constant in evals. */

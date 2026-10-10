@@ -41,6 +41,7 @@ const content = (hooks?: CoframeAgentHooks): PageContent => ({
   jsonLd: [],
   links: [],
   source: 'readability',
+  segments: [],
   ...(hooks ? { agentHooks: hooks } : {}),
 })
 

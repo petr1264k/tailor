@@ -26,6 +26,7 @@ const TV: PageContent = {
   jsonLd: [],
   links: [],
   source: 'readability',
+  segments: [],
 }
 
 describe('tokenize', () => {

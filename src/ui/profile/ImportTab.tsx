@@ -1,8 +1,8 @@
 /**
  * Import tab (CONTEXT.txt §3.1; demo §9 0:00–0:20 "N conversations, M messages, two sources").
  * ONE JSON file, never a zip → detectExportFormat (user overrides if 'unknown') → import.runImport, which is
- * parseExport → applyLimits → saveConversations plus skip counts → per-source stats. Then "Extract profile" runs extract.runExtract (§3.2, with progress) into the active profile
- * and stores its "never extracted" counts (§3.3) for the Profile tab.
+ * parseExport → applyLimits → saveConversations plus skip counts → per-source stats. Then "Extract profile" runs extract.runExtract
+ * (§3.2, with progress) into the active profile.
  * Nothing here logs or displays message text: the raw chats never reach the screen (§0).
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -11,8 +11,7 @@ import type { ArchiveStats } from '@/messages'
 import { DEFAULT_IMPORT_OPTIONS, detectExportFormat, runImport } from '@/import'
 import { clearArchive, getArchiveStats } from '@/archive'
 import { runExtract } from '@/extract'
-import { attempt, isZipFile, monthRange, originLabel, totalCount, type Attempt } from './helpers'
-import { saveNeverExtracted } from './store'
+import { attempt, isZipFile, monthRange, originLabel, type Attempt } from './helpers'
 
 const ORIGINS: ChatOrigin[] = ['chatgpt', 'claude']
 
@@ -242,16 +241,13 @@ function ExtractCard({ profileId, profileName, disabled }: { profileId: string; 
     )
     const secs = Math.round((Date.now() - t0) / 1000)
     if (r.ok) {
-      const saved = await attempt(() => saveNeverExtracted(profileId, r.value.neverExtracted))
       const live = r.value.profile.facts.filter((f) => f.userStatus !== 'deleted').length
       const { candidates, verified } = r.value.stats
       setResult({
-        ok: saved.ok,
+        ok: true,
         text:
           `Done in ${secs} s: the model proposed ${candidates} facts, code verified the quotes of ${verified}; ` +
-          `${live} facts in profile v${r.value.profile.version}; ` +
-          `${totalCount(r.value.neverExtracted)} sensitive items never extracted.` +
-          (saved.ok ? ' Open the Profile tab to review.' : ` Could not store the never-extracted counts: ${saved.error}`),
+          `${live} facts in profile v${r.value.profile.version}. Open the Profile tab to review.`,
       })
     } else {
       setResult({ ok: false, text: `Extraction failed after ${secs} s: ${r.error}` })
@@ -263,8 +259,8 @@ function ExtractCard({ profileId, profileName, disabled }: { profileId: string; 
     <section className="card stack">
       <h2>Extract profile</h2>
       <p className="muted" style={{ margin: 0 }}>
-        Haiku proposes facts with a quote from your own messages; code checks every quote; Sonnet merges and scores them. Health, religion,
-        politics, sexuality, exact location, finances and other people's names are never extracted.
+        Haiku proposes facts with a quote from your own messages; code checks every quote; Sonnet merges and scores them. Everything the
+        model proposes and code verifies goes into the profile; review it on the Profile tab.
       </p>
       <div className="row">
         <button className="primary" disabled={running || disabled} onClick={() => void run()}>

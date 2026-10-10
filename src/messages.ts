@@ -63,7 +63,6 @@ export interface RequestMap {
     req: { profileId?: string }
     res: {
       profile: Profile
-      neverExtracted: Record<string, number>
       /** "The model proposed N, code verified M" (§0): candidates proposed by the map step vs quotes verified by code. */
       stats?: { chunks: number; candidates: number; verified: number }
     }

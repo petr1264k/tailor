@@ -73,34 +73,8 @@ export type MergedFact = z.infer<typeof MergedFactSchema>
 /** Relevance selection (§3.5): which profile facts matter for this page. */
 export const RelevantFactIdsSchema = z.object({ factIds: z.array(z.string()).max(12) })
 
-/** Needs text for a site (§4). Code runs the sensitive filter on it afterwards regardless. */
+/** Needs text for a site (§4). Code scrubs names, emails and phone numbers from it afterwards regardless (scrubForSharing). */
 export const NeedsTextSchema = z.object({ needs: z.string().min(1).max(2000), constraints: z.string().max(1000).optional() })
-
-/** The "never extracted" categories (§3.3). Defined here, not in '@/filter', because filter imports this file. */
-export const SENSITIVE_CATEGORY_VALUES = [
-  'health',
-  'religion',
-  'politics',
-  'sexuality',
-  'location',
-  'finances',
-  'names',
-  'contact',
-] as const
-
-/** Sensitive classifier (§3.3). A second line of defense after the code rules. */
-export const SensitiveVerdictSchema = z.object({
-  verdicts: z.array(
-    z.object({
-      index: z.number().int().nonnegative(),
-      sensitive: z.boolean(),
-      // An unknown category degrades to undefined (code then maps `reason`) instead of failing the whole reply,
-      // which would turn off the classifier for every fact in the call.
-      category: z.enum(SENSITIVE_CATEGORY_VALUES).optional().catch(undefined),
-      reason: z.string().max(80).optional(),
-    }),
-  ),
-})
 
 // ── Type-level lock between BlockSchema and the frozen Block type ──
 type SchemaBlock = z.infer<typeof BlockSchema>

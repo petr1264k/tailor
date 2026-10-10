@@ -74,10 +74,6 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .split { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
 .split ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
 
-/* Never extracted */
-.never { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px 20px; margin: 0; padding: 0; list-style: none; }
-.never li { display: flex; justify-content: space-between; border-bottom: 1px solid var(--line); padding: 6px 0; }
-
 /* Receipts */
 .reply { white-space: pre-wrap; margin: 0; }
 .from-site { font-size: 13px; color: var(--muted); }

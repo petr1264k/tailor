@@ -3,7 +3,6 @@
  *  - Facts grouped by category: value, confidence bar, source chip, evidence lines ("ChatGPT, Aug 3: '…'"),
  *    Keep / Edit / Delete. Deleted facts stay visible, struck through, with Restore. Delete one live on stage.
  *  - Split: what ChatGPT knows, what Claude knows, the overlap (live facts only).
- *  - Never extracted (§3.3): each sensitive category with its count from the last extraction.
  * Only owner-approved facts and short quotes are shown, never raw chats (§0).
  */
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -14,15 +13,11 @@ import {
   FACT_CATEGORY_LABELS,
   attempt,
   confidencePct,
-  dateTime,
   errorText,
   groupFactsByCategory,
   monthRange,
-  neverExtractedRows,
-  totalCount,
   type Attempt,
 } from './helpers'
-import { loadNeverExtracted } from './store'
 
 type View = 'category' | 'split'
 
@@ -101,7 +96,6 @@ export function ProfileTab({ profileId }: { profileId: string }) {
           {view === 'category' ? <FactsByCategory facts={profile.value.facts} actions={actions} /> : <SplitView profile={profile.value} />}
         </>
       )}
-      <NeverExtracted profileId={profileId} />
     </div>
   )
 }
@@ -276,32 +270,3 @@ function SplitView({ profile }: { profile: Profile }) {
   )
 }
 
-function NeverExtracted({ profileId }: { profileId: string }) {
-  const [stored, setStored] = useState<Attempt<Awaited<ReturnType<typeof loadNeverExtracted>>> | null>(null)
-  useEffect(() => {
-    void attempt(() => loadNeverExtracted(profileId)).then(setStored)
-  }, [profileId])
-
-  const counts = stored?.ok && stored.value ? stored.value.counts : {}
-  const known = stored?.ok && stored.value
-  return (
-    <section className="card stack">
-      <h3 style={{ margin: 0 }}>
-        Never extracted{known ? <span className="muted small"> · {totalCount(counts)} items skipped</span> : null}
-      </h3>
-      <div className="muted small">
-        Tailor never turns these topics into facts.{' '}
-        {known ? `Counts from the extraction on ${dateTime(stored.value!.at)}.` : 'Counts appear after you run Extract profile.'}
-      </div>
-      {stored && !stored.ok && <div className="error">{stored.error}</div>}
-      <ul className="never">
-        {neverExtractedRows(counts).map((r) => (
-          <li key={r.key}>
-            <span>{r.label}</span>
-            <b>{known ? r.count : '—'}</b>
-          </li>
-        ))}
-      </ul>
-    </section>
-  )
-}

@@ -7,12 +7,10 @@ import {
   groupFactsByCategory,
   isZipFile,
   monthRange,
-  neverExtractedRows,
   originLabel,
   profileIdFromName,
   shortDate,
   siteLabel,
-  totalCount,
   truncate,
 } from './helpers'
 
@@ -104,15 +102,5 @@ describe('profileIdFromName', () => {
     expect(profileIdFromName('  Petr K. ', [])).toBe('petr-k')
     expect(profileIdFromName('Petr', ['petr', 'petr-2'])).toBe('petr-3')
     expect(profileIdFromName('!!!', [])).toBe('profile')
-  })
-})
-
-describe('neverExtractedRows', () => {
-  it('lists every sensitive category, then extra keys', () => {
-    const rows = neverExtractedRows({ health: 3, names: 1, weird: 2 })
-    expect(rows.find((r) => r.key === 'health')).toEqual({ key: 'health', label: 'Health', count: 3 })
-    expect(rows.find((r) => r.key === 'religion')!.count).toBe(0)
-    expect(rows.at(-1)).toEqual({ key: 'weird', label: 'weird', count: 2 })
-    expect(totalCount({ health: 3, names: 1, weird: 2 })).toBe(6)
   })
 })

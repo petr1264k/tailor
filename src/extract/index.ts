@@ -15,7 +15,6 @@ import type { HandlerMap } from '@/messages'
 import { completeJson } from '@/llm/client'
 import { getArchiveStats, getOwnMessages } from '@/archive'
 import { getProfile, saveProfile, withProfileLock } from '@/profile'
-import { filterSensitive } from '@/filter'
 import { MAP_SYSTEM, MERGE_SYSTEM } from './prompts'
 
 export interface ExtractOptions {
@@ -409,25 +408,23 @@ export function mergeIntoProfile(profile: Profile, extracted: Fact[]): Profile {
 
 export interface ExtractRunResult {
   profile: Profile
-  neverExtracted: Record<string, number>
   stats: { chunks: number; candidates: number; verified: number }
 }
 
 /**
- * The whole run: own messages → extractFacts → filterSensitive → merge into the stored profile → save.
+ * The whole run: own messages → extractFacts → merge into the stored profile → save.
  * The profile page calls this directly (extension origin) to show progress; 'extract/run' wraps it.
  * The long model work runs outside the profile lock; only the read-merge-save is serialized.
  */
 export async function runExtract(profileId?: string, onProgress?: ExtractOptions['onProgress']): Promise<ExtractRunResult> {
   const messages = await getOwnMessages()
   const { facts, questions, stats } = await extractFacts(messages, { onProgress })
-  const { kept, counts } = await filterSensitive([...facts, ...questions])
   const profile = await withProfileLock(async () => {
     const current = await getProfile(profileId)
     const { conversations, messages: count, from, to } = await getArchiveStats()
-    return saveProfile({ ...mergeIntoProfile(current, kept), stats: { conversations, messages: count, from, to } }, profileId)
+    return saveProfile({ ...mergeIntoProfile(current, [...facts, ...questions]), stats: { conversations, messages: count, from, to } }, profileId)
   })
-  return { profile, neverExtracted: counts, stats }
+  return { profile, stats }
 }
 
 export const handlers: HandlerMap = {

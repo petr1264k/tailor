@@ -1,7 +1,7 @@
 /**
  * Build a HELD-OUT eval profile (CONTEXT.txt §8.1) in Node, from the same export file the extension imports.
- *   facts:              extractFacts(messages before the cutoff, { before: cutoff })  → filterSensitive
- *   heldOutQuestions:   mineQuestions(messages on/after the cutoff)                  → filterSensitive
+ *   facts:              extractFacts(messages before the cutoff, { before: cutoff })
+ *   heldOutQuestions:   mineQuestions(messages on/after the cutoff)
  * Written to data/profiles/<id>.json (gitignored). Counts only are printed: never message text.
  */
 import { existsSync } from 'node:fs'
@@ -10,7 +10,6 @@ import { join, resolve } from 'node:path'
 import type { Fact, OwnMessage, Profile } from '@/types'
 import { applyLimits, detectExportFormat, parseExport } from '@/import'
 import { extractFacts, mineQuestions } from '@/extract'
-import { filterSensitive } from '@/filter'
 import { PROFILES_DIR, ROOT, argString, mdTable, requireApiKey, type EvalProfileFile, type TaskArgs, type TaskReport } from '../lib/common'
 
 /** Default cutoff: 30 days before the newest message, so the newest month is held out. */
@@ -62,18 +61,18 @@ export async function run(args: TaskArgs): Promise<TaskReport> {
     onProgress: (done, total, stage) => process.stdout.write(`\r  ${stage} ${done}/${total}   `),
   })
   process.stdout.write('\n')
-  const kept = await filterSensitive([...extracted.facts, ...extracted.questions])
+  const facts: Fact[] = [...extracted.facts, ...extracted.questions]
   console.log(`mining questions from ${newer.length} newer messages (held out) ...`)
-  const heldOut = await filterSensitive(await mineQuestions(newer))
+  const heldOut = await mineQuestions(newer)
 
   const conversationsOlder = new Set(older.map((m) => m.conversationId)).size
   const profile: Profile = {
     version: 1,
-    facts: kept.kept,
+    facts,
     shares: [],
     stats: { conversations: conversationsOlder, messages: older.length, from: older[0].date, to: older[older.length - 1].date },
   }
-  const heldOutQuestions: Fact[] = heldOut.kept.filter((f) => f.category === 'question')
+  const heldOutQuestions: Fact[] = heldOut.filter((f) => f.category === 'question')
   const file: EvalProfileFile = {
     id,
     name: id.charAt(0).toUpperCase() + id.slice(1),
@@ -88,7 +87,6 @@ export async function run(args: TaskArgs): Promise<TaskReport> {
 
   const byCategory: Record<string, number> = {}
   for (const f of profile.facts) byCategory[f.category] = (byCategory[f.category] ?? 0) + 1
-  const removed = kept.removed.length + heldOut.removed.length
   const md = [
     `# Held-out profile: ${id}`,
     '',
@@ -99,7 +97,6 @@ export async function run(args: TaskArgs): Promise<TaskReport> {
     '',
     `Facts kept: N = ${profile.facts.length} (${Object.entries(byCategory).map(([c, n]) => `${c} ${n}`).join(', ') || 'none'}).`,
     `Held-out questions: N = ${heldOutQuestions.length}.`,
-    `Removed by the sensitive filter: ${removed} (never extracted).`,
     `Extraction: ${extracted.stats.chunks} chunks, ${extracted.stats.candidates} candidates, ${extracted.stats.verified} with verified quotes.`,
     '',
     `Wrote ${path.replace(ROOT, '')} (gitignored). Next: npm run eval -- first-screen`,
@@ -114,7 +111,6 @@ export async function run(args: TaskArgs): Promise<TaskReport> {
       facts: profile.facts.length,
       byCategory,
       heldOutQuestions: heldOutQuestions.length,
-      removedBySensitiveFilter: removed,
       extractStats: extracted.stats,
     },
     md,

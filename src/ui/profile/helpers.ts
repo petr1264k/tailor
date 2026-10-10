@@ -4,7 +4,6 @@
  */
 import type { Fact, FactCategory } from '@/types'
 import { FACT_CATEGORIES } from '@/types'
-import { SENSITIVE_CATEGORIES, type SensitiveCategory } from '@/filter'
 
 // ── Errors: every module call on these pages is wrapped; a thrown TODO shows inline, never crashes the page ──
 
@@ -37,18 +36,6 @@ export const FACT_CATEGORY_LABELS: Record<FactCategory, string> = {
   dislikes: 'Dislikes',
   goal: 'Goals',
   question: 'Questions they keep asking',
-}
-
-/** The "never extracted" list (§3.3, §9 0:20–0:45). */
-export const SENSITIVE_LABELS: Record<SensitiveCategory, string> = {
-  health: 'Health',
-  religion: 'Religion',
-  politics: 'Politics',
-  sexuality: 'Sexuality',
-  location: 'Exact location',
-  finances: 'Detailed finances',
-  names: "Other people's names",
-  contact: 'Emails and phone numbers',
 }
 
 export function originLabel(origin: string): string {
@@ -165,23 +152,3 @@ export function profileIdFromName(name: string, existing: readonly string[]): st
   }
 }
 
-// ── Never extracted (§3.3) ──
-
-export interface NeverExtractedRow {
-  key: string
-  label: string
-  count: number
-}
-
-/** Every known sensitive category (count 0 if absent), then any extra keys the filter reported. */
-export function neverExtractedRows(counts: Record<string, number>): NeverExtractedRow[] {
-  const known = SENSITIVE_CATEGORIES.map((key) => ({ key, label: SENSITIVE_LABELS[key], count: counts[key] ?? 0 }))
-  const extra = Object.keys(counts)
-    .filter((k) => !(SENSITIVE_CATEGORIES as readonly string[]).includes(k))
-    .map((key) => ({ key, label: key, count: counts[key] ?? 0 }))
-  return [...known, ...extra]
-}
-
-export function totalCount(counts: Record<string, number>): number {
-  return Object.values(counts).reduce((n, c) => n + (Number.isFinite(c) ? c : 0), 0)
-}

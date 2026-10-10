@@ -20,8 +20,6 @@ export const MODELS = {
   merge: 'claude-sonnet-5-5',
   /** Fast in-page rewrite (§3.5). */
   rewrite: 'claude-haiku-5-5',
-  /** Second-line sensitive classifier (§3.3). */
-  classify: 'claude-haiku-5-5',
 } as const
 export type ModelRole = keyof typeof MODELS
 

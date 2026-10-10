@@ -16,8 +16,8 @@ Fallbacks for everything: offline copies (`demo/pages/`), cached tailored versio
 - [ ] **0:00–0:20 Hook.** "Your ChatGPT and Claude history knows you better than any website does."
   Show the archive: N conversations, M messages, two sources. Show the split: what ChatGPT knows, what Claude knows, the overlap.
   *Fallback:* a screenshot of the archive stats and the split, taken at rehearsal.
-- [ ] **0:20–0:45 Profile.** Facts with source quotes. Delete one live. Show the "never extracted" list.
-  *Fallback:* if delete hangs, skip it and point at the "never extracted" counts; do not open raw chats.
+- [ ] **0:20–0:45 Profile.** Facts with source quotes. Delete one live.
+  *Fallback:* if delete hangs, skip it and move on; do not open raw chats.
 - [ ] **0:45–1:25 Tailor.** Open the TV page as everyone sees it, then click Tailor.
   "For you" notes: PS5 compatibility first, budget checked, marketing collapsed. Hover a "why" chip to show the quote. Flip Original ↔ Tailored.
   *Fallback:* the `file://` copy (`demo/pages/1-product.html`) with the cached tailored version; if the extension fails, cut to the video at this segment.

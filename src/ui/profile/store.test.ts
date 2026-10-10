@@ -2,12 +2,11 @@ import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { getDb, resetDbForTests } from '@/archive'
-import { createProfile, loadNeverExtracted, resetNeverExtractedForTests, saveNeverExtracted } from './store'
+import { createProfile } from './store'
 
 beforeEach(() => {
   indexedDB = new IDBFactory()
   resetDbForTests()
-  resetNeverExtractedForTests()
 })
 
 describe('createProfile', () => {
@@ -22,15 +21,5 @@ describe('createProfile', () => {
 
   it('rejects an empty name', async () => {
     await expect(createProfile('   ')).rejects.toThrow('name')
-  })
-})
-
-describe('never extracted counts', () => {
-  it('stores counts per profile', async () => {
-    expect(await loadNeverExtracted('petr')).toBeNull()
-    await saveNeverExtracted('petr', { health: 2 }, '2026-10-10T20:00:00Z')
-    await saveNeverExtracted('mikhail', { names: 5 })
-    expect(await loadNeverExtracted('petr')).toEqual({ counts: { health: 2 }, at: '2026-10-10T20:00:00Z' })
-    expect((await loadNeverExtracted('mikhail'))!.counts).toEqual({ names: 5 })
   })
 })

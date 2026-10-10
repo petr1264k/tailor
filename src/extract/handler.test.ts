@@ -40,13 +40,13 @@ beforeEach(() => {
           { category: 'interest', value: 'takes medication', candidateIndices: [1], confidence: 0.4 },
         ],
       })
-    return reply({ verdicts: [] }) // classify
+    throw new Error(`unexpected model role ${opts.role}`)
   })
   vi.mocked(getOwnMessages).mockResolvedValue(messages)
 })
 
 describe("handlers['extract/run']", () => {
-  it('extracts, filters, merges into the stored profile and saves it', async () => {
+  it('extracts every verified fact, merges into the stored profile and saves it', async () => {
     vi.mocked(getArchiveStats).mockResolvedValue({
       conversations: 2,
       messages: 2,
@@ -62,17 +62,22 @@ describe("handlers['extract/run']", () => {
     })
     vi.mocked(saveProfile).mockImplementation(async (p) => ({ ...p, version: p.version + 1 }))
 
-    const { profile, neverExtracted, stats } = await run('petr')
-    expect(stats).toEqual({ chunks: 1, candidates: 2, verified: 2 })
+    const result = await run('petr')
+    expect(result.stats).toEqual({ chunks: 1, candidates: 2, verified: 2 })
+    expect(result).not.toHaveProperty('neverExtracted')
+    // Only extract and merge talk to a model: there is no classifier pass.
+    expect(vi.mocked(completeJson).mock.calls.map((c) => c[0].role)).toEqual(['extract', 'merge'])
 
+    const { profile } = result
     expect(saveProfile).toHaveBeenCalledWith(expect.anything(), 'petr')
     expect(profile.version).toBe(5)
     expect(profile.stats).toEqual({ conversations: 2, messages: 2, from: '2026-09-01T00:00:00Z', to: '2026-09-02T00:00:00Z' })
     const ps5 = profile.facts.find((f) => f.value === 'owns a PS5')
     expect(ps5).toMatchObject({ id: 'kept-ps5', userStatus: 'kept', prior: { alpha: 4, beta: 1 } })
     expect(ps5?.evidence[0]).toMatchObject({ origin: 'claude', quote: 'Just got a PS5' })
-    expect(profile.facts.some((f) => /medication/i.test(f.value + f.evidence.map((e) => e.quote).join()))).toBe(false)
-    expect(neverExtracted.health).toBeGreaterThanOrEqual(1)
+    // Nothing is held back: the medication fact lands in the profile with its quote.
+    const meds = profile.facts.find((f) => f.value === 'takes medication')
+    expect(meds?.evidence[0]).toMatchObject({ origin: 'chatgpt', quote: 'my medication' })
   })
 
   it('surfaces real errors instead of hiding them', async () => {

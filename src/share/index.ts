@@ -2,7 +2,7 @@
  * Share with sites (CONTEXT.txt §3.9, §4). Built only for coframe.com. Owner: Mikhail.
  *
  * 1. Take the few facts the rewrite already chose for this page → 1–2 sentence needs string (NeedsTextSchema).
- * 2. Run it through the sensitive filter. Never names, emails or phone numbers.
+ * 2. Scrub it with scrubForSharing from '@/filter'. Never names, emails or phone numbers.
  * 3. Consent sheet shows the text word for word and the facts it uses. "Share 3 facts" / "Don't share". Opt-in per site.
  * 4. POST with agent name "Tailor". Read endpoint, field names and any page/token parameters FROM THE PAGE; never hardcode.
  * 5. Show the reply in a `from_site` block: plain text, never passed to the rewrite model, links must exist on the page,

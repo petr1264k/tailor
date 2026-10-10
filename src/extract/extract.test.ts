@@ -96,7 +96,8 @@ describe('proposeCandidates (map step)', () => {
     expect(call.role).toBe('extract')
     expect(call.schema).toBe(CandidateFactsOutputSchema)
     expect(call.user).toContain('[m1] (chatgpt, Best TV for PS5, 2026-08-03): Just got a PS5, which TV should I get?')
-    expect(call.system).toMatch(/health/)
+    // No topic exclusions in the prompt: nothing about the person is held back at extraction.
+    expect(call.system).not.toMatch(/health|religion|politics|sexuality/i)
   })
 })
 

@@ -3,8 +3,7 @@
  *
  * Tabs (CONTEXT.txt §3.1, §3.4, §4 step 6, §9 0:00–0:45):
  *  - Import:   ONE JSON file (ChatGPT conversations.json or the Claude export) → archive stats per source → Extract profile
- *  - Profile:  facts by category with source quotes; keep / edit / delete / restore; ChatGPT / Claude / both split;
- *              "never extracted" counts
+ *  - Profile:  facts by category with source quotes; keep / edit / delete / restore; ChatGPT / Claude / both split
  *  - Receipts: what was shared with which site, when (SiteShare)
  * The profile switcher sits in the header so the active profile (Mikhail / Petr) is visible on every tab.
  * Runs in the extension origin: calls modules directly. Every call is wrapped (attempt); errors show inline.

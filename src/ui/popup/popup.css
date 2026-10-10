@@ -1,0 +1,21 @@
+/* Popup. Same accent as the profile page; 15px base so it reads on a projector. */
+:root { --accent: #3346d3; --accent-soft: #e8ebfb; --ink: #15171c; --muted: #5f6573; --line: #dfe2e8; --danger: #b42318; }
+* { box-sizing: border-box; }
+body { margin: 0; width: 340px; font: 15px/1.45 system-ui, -apple-system, 'Segoe UI', sans-serif; color: var(--ink); }
+.popup { padding: 16px; display: grid; gap: 12px; }
+.top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.top strong { font-size: 18px; }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+.field { display: grid; gap: 4px; }
+.row { display: flex; gap: 8px; }
+.row > * { flex: 1; }
+input[type='password'] { font: inherit; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; width: 100%; }
+button { font: inherit; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--line); background: #fff; color: var(--ink); cursor: pointer; }
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled { opacity: 0.5; cursor: default; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+button.link { border: 0; background: none; color: var(--accent); padding: 0; }
+.check { display: flex; align-items: center; gap: 8px; }
+.status { background: var(--accent-soft); border-radius: 8px; padding: 8px 10px; font-size: 14px; }
+.error { color: var(--danger); font-size: 14px; }

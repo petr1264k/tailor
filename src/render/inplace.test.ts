@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Fact, PageEdit, PageSegment, TailoredPage } from '@/types'
 import { collectSegments, resolveSegment } from '@/tailor/segments'
 import { mountTailorButton, renderFromSite, renderTailored, showOriginal, showTailored, type RenderCallbacks, type TailorUi } from './index'
-import { foldTargets } from './inplace'
+import { foldTargets, markedElements } from './inplace'
+import { buildScorecard, countWords, measureSide, scorecardLine, scorecardRows } from './scorecard'
 
 const ps5: Fact = {
   id: 'f1',
@@ -270,5 +271,167 @@ describe('in-place edits', () => {
     expect(pop.hidden).toBe(false)
     expect(pop.querySelector('.claim')?.textContent).toBe('144 Hz')
     expect(pop.textContent).toContain('7 claims checked')
+  })
+})
+
+describe('in place: page map edits (promote, badge, region hide) and the scorecard', () => {
+  const STORE = `
+    <main><div class="wrap">
+      <div id="hero"><h2>Fall Savings Start Now</h2><p>Save up to 50% on select favorites.</p></div>
+      <div id="stats"><h2>The No. 1 Mobile Charging Brand</h2><p>Available in 146 Markets</p></div>
+      <div id="shelf"><h2>Must-Have Selections</h2><div id="list">
+        <div class="card" id="c1"><a href="/p/1">x</a><h3>Nano Charger (45W)</h3><p>Small and foldable.</p></div>
+        <div class="card" id="c2"><a href="/p/2">x</a><h3>Laptop Power Bank (25K, 165W)</h3><p>Charges a MacBook Pro.</p></div>
+        <div class="card" id="c3"><a href="/p/3">x</a><h3>Prime Charger (250W)</h3><p>Six ports for the desk.</p></div>
+      </div></div>
+      <div id="member"><h2>Become a member today</h2><p>Earn points on every purchase you make.</p></div>
+    </div></main>`
+  const regions = [
+    { id: 'r1', role: 'hero' as const, title: 'Fall Savings Start Now', segmentIds: [] },
+    { id: 'r2', role: 'stats' as const, title: 'The No. 1 Mobile Charging Brand', segmentIds: [] },
+    {
+      id: 'r3',
+      role: 'products' as const,
+      title: 'Must-Have Selections',
+      segmentIds: [],
+      items: [
+        { id: 'i1', title: 'Nano Charger (45W)', segmentIds: [] },
+        { id: 'i2', title: 'Laptop Power Bank (25K, 165W)', segmentIds: [] },
+        { id: 'i3', title: 'Prime Charger (250W)', segmentIds: [] },
+      ],
+    },
+    { id: 'r4', role: 'membership' as const, title: 'Become a member today', segmentIds: [] },
+  ]
+  const byId: Record<string, string> = { r1: 'hero', r2: 'stats', r3: 'shelf', r4: 'member', i1: 'c1', i2: 'c2', i3: 'c3' }
+  const mapTarget = () => ({ ...target(), regions, resolveRegion: (id: string) => document.getElementById(byId[id] ?? '') , promoteAfterRole: 'hero' as const })
+  const order = (parent: string) => Array.from(document.getElementById(parent)!.children).map((c) => c.id || c.tagName.toLowerCase()).filter((x) => !x.startsWith('tailor'))
+  const wrapOrder = () => Array.from(document.querySelector('.wrap')!.children).map((c) => c.id || c.tagName.toLowerCase())
+
+  it('promotes a region to just after the hero run and a card to the front of its list, with an exact undo', () => {
+    const { ui } = setup(STORE)
+    const originalWrap = wrapOrder()
+    const originalList = order('list')
+    renderTailored(
+      page([
+        { op: 'promote', id: 'r3', reason: 'Power banks for your trips come first.', factIds: ['f1'] },
+        { op: 'promote', id: 'i2', reason: 'Enough for your MacBook Pro.', factIds: ['f1'] },
+      ]),
+      [ps5],
+      ui,
+      mapTarget(),
+    )
+    expect(wrapOrder().filter((x) => x !== 'tailor-note')).toEqual(['hero', 'shelf', 'stats', 'member'])
+    const strip = document.querySelector('.wrap > tailor-note') as HTMLElement
+    expect(strip).not.toBeNull()
+    expect(strip.nextElementSibling?.id).toBe('shelf')
+    expect(strip.shadowRoot!.querySelector('.kicker')!.textContent).toBe('Moved up for you')
+    expect(strip.shadowRoot!.querySelector('.text')!.textContent).toBe('Power banks for your trips come first.')
+    expect(order('list')).toEqual(['c2', 'c1', 'c3'])
+    const badge = document.querySelector('#c2 h3 tailor-badge') as HTMLElement
+    expect(badge.shadowRoot!.querySelector('.badge-kicker')!.textContent).toBe('Moved up for you')
+    expect(badge.shadowRoot!.querySelector('.badge-label')!.textContent).toBe('Enough for your MacBook Pro.')
+
+    showOriginal(ui)
+    expect(wrapOrder()).toEqual(originalWrap)
+    expect(order('list')).toEqual(originalList)
+    expect(document.querySelector('tailor-note, tailor-badge')).toBeNull()
+
+    showTailored(ui)
+    expect(wrapOrder().filter((x) => x !== 'tailor-note')).toEqual(['hero', 'shelf', 'stats', 'member'])
+    expect(order('list')).toEqual(['c2', 'c1', 'c3'])
+  })
+
+  it('tags a card with a badge inside its title, hides a region whole with a stub, and undoes both', () => {
+    const { ui, onInteraction } = setup(STORE)
+    renderTailored(
+      page([
+        { op: 'badge', id: 'i1', label: '45W: enough for your phone', factIds: ['f1'] },
+        { op: 'hide', ids: ['r4'], label: 'Membership pitch', reason: 'You buy, you do not join.' },
+      ]),
+      [ps5],
+      ui,
+      mapTarget(),
+    )
+    const badge = document.querySelector('#c1 h3 tailor-badge') as HTMLElement
+    expect(badge.shadowRoot!.querySelector('.badge-label')!.textContent).toBe('45W: enough for your phone')
+    expect(badge.shadowRoot!.querySelectorAll('tailor-why')).toHaveLength(1)
+    const member = document.getElementById('member') as HTMLElement
+    expect(member.style.display).toBe('none')
+    const fold = member.previousElementSibling as HTMLElement
+    expect(fold.tagName.toLowerCase()).toBe('tailor-fold')
+    ;(fold.shadowRoot!.querySelector('.toggle') as HTMLButtonElement).click()
+    expect(member.style.display).toBe('')
+    expect(onInteraction).toHaveBeenCalledWith({ kind: 'expand', blockType: 'hidden', factIds: [] })
+    showOriginal(ui)
+    expect(document.querySelector('tailor-badge, tailor-fold')).toBeNull()
+    expect(member.hasAttribute('style')).toBe(false)
+  })
+
+  it('skips map edits whose element is gone and still applies the rest', () => {
+    const { ui } = setup(STORE)
+    document.getElementById('c3')!.remove()
+    renderTailored(
+      page([
+        { op: 'badge', id: 'i3', label: 'gone', factIds: ['f1'] },
+        { op: 'promote', id: 'i9', reason: 'unknown', factIds: ['f1'] },
+        { op: 'badge', id: 'i1', label: 'still here', factIds: ['f1'] },
+      ]),
+      [ps5],
+      ui,
+      mapTarget(),
+    )
+    expect(document.querySelectorAll('tailor-badge')).toHaveLength(1)
+  })
+
+  it('markedElements lists promote and badge targets and note anchors once each, in edit order', () => {
+    setup(STORE)
+    const marked = markedElements(
+      page([
+        { op: 'promote', id: 'r3', reason: 'r', factIds: ['f1'] },
+        { op: 'badge', id: 'i2', label: 'b', factIds: ['f1'] },
+        { op: 'note', after: 'i2', text: 'n', factIds: ['f1'] },
+        { op: 'hide', ids: ['r4'], label: 'h', reason: 'r' },
+        { op: 'note', after: byText('Save up'), text: 'n2', factIds: ['f1'] },
+      ]),
+      mapTarget(),
+    )
+    expect(marked.map((e) => e.id || e.tagName.toLowerCase())).toEqual(['shelf', 'c2', 'p'])
+  })
+})
+
+describe('scorecard', () => {
+  it('counts words, screens and first-screen marks; formats the bar line and rows', () => {
+    expect(countWords("Anker's 45W charger — $29.99, 180° foldable")).toBe(6)
+    const before = { words: 2870, firstMatchTop: 3240, firstMatchScreens: 3.6, onFirstScreen: 0 }
+    const after = { words: 1140, firstMatchTop: 420, firstMatchScreens: 0.5, onFirstScreen: 2 }
+    const card = buildScorecard(
+      page([
+        { op: 'promote', id: 'r3', reason: 'r', factIds: ['f1'] },
+        { op: 'badge', id: 'i2', label: 'b', factIds: ['f1'] },
+        { op: 'hide', ids: ['r4'], label: 'h', reason: 'r' },
+      ]),
+      before,
+      after,
+      3,
+      900,
+    )
+    expect(card).toMatchObject({ marked: 3, promoted: 1, badges: 1, hidden: 1, notes: 0, warnings: 0, rewrites: 0 })
+    expect(scorecardLine(card)).toBe('1st match 3.6 screens down → first screen · words 2,870 → 1,140')
+    expect(scorecardRows(card)).toEqual([
+      ['First thing marked for you', '3.6 screens down → first screen (3,240 px → 420 px)'],
+      ['Marked for you on the first screen', '0 → 2 of 3'],
+      ['Words on the page', '2,870 → 1,140'],
+      ['Changes', '1 moved up, 1 tagged, 1 hidden'],
+    ])
+    const none = buildScorecard(page([]), { ...before, firstMatchTop: null, firstMatchScreens: null }, { ...after, firstMatchTop: null, firstMatchScreens: null }, 0, 900)
+    expect(scorecardLine(none)).toBe('words 2,870 → 1,140')
+  })
+
+  it('measureSide reads positions and visible words from the live page', () => {
+    document.body.innerHTML = `<div id="a">one two three</div><div id="b" style="display:none">hidden words here</div>`
+    const side = measureSide(document, [document.getElementById('a')!, document.getElementById('b')!])
+    expect(side.words).toBe(3)
+    expect(side.firstMatchTop).toBe(0)
+    expect(side.onFirstScreen).toBe(1)
   })
 })

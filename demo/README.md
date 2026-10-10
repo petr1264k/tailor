@@ -9,6 +9,7 @@ Pick by 16:00. Every page gets an offline copy in `demo/pages/` (gitignored) so 
 | 2 | dense docs page | both | examples reordered for your stack and level |
 | 3 | recipe page | both | diet, allergens, cooking time |
 | 4 | https://www.coframe.com | Mikhail (CTO) vs Petr (frontend) | the finale, then the share with consent |
+| 5 | https://www.anker.com (storefront) | both | the page rebuilds itself: the shelf that fits moves up, matching cards jump to the front with "For you" tags, membership and promos fold; the scorecard chip gives the numbers (src/sites/anker.ts is the site profile) |
 
 ## Save a copy with ⌘S (the one we demo from)
 

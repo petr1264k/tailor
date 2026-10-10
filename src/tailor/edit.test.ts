@@ -118,3 +118,55 @@ describe('proposeEdits', () => {
     expect(call.user).toContain('s2 [p]')
   })
 })
+
+describe('page map: prompt, checkEdits caps, editsToBlocks', () => {
+  const regions = [
+    { id: 'r1', role: 'hero' as const, title: 'Fall Savings Start Now', segmentIds: ['s1'] },
+    {
+      id: 'r2',
+      role: 'products' as const,
+      title: 'Must-Have Selections',
+      segmentIds: ['s2'],
+      items: [{ id: 'i1', title: 'Laptop Power Bank (25K, 165W)', price: '$129.99', wasPrice: '$149.99', detail: 'Charges a MacBook Pro', segmentIds: ['s2'] }],
+    },
+  ]
+  const store: PageContent = { ...content, url: 'https://www.anker.com/', site: { host: 'anker.com', name: 'Anker', kind: 'storefront' }, regions }
+
+  it('puts the page map in the prompt, with the site and the cards as the page shows them', () => {
+    const prompt = buildEditUserPrompt(store, facts)
+    expect(prompt).toContain('Page map of Anker (anker.com, a storefront) (region id | role | title | items):')
+    expect(prompt).toContain('r1 | hero | Fall Savings Start Now | s1–s1')
+    expect(prompt).toContain('r2 | products | Must-Have Selections | items: i1 Laptop Power Bank (25K, 165W) — $129.99 (was $149.99) — Charges a MacBook Pro')
+    expect(buildEditUserPrompt(content, facts)).not.toContain('Page map')
+  })
+
+  it('checkEdits keeps promotes and badges only with known facts, one promote per target, within the caps', () => {
+    const many: PageEdit[] = [
+      { op: 'promote', id: 'r2', reason: 'first', factIds: ['f-ps5'] },
+      { op: 'promote', id: 'r2', reason: 'again', factIds: ['f-ps5'] },
+      { op: 'promote', id: 'i1', reason: 'no evidence', factIds: ['f-nope'] },
+      ...Array.from({ length: 8 }, (_, i) => ({ op: 'badge' as const, id: `i${i + 1}`, label: `b${i}`, factIds: ['f-ps5'] })),
+      { op: 'badge', id: 'i9', label: 'no evidence', factIds: [] },
+    ]
+    const out = checkEdits(many, facts)
+    expect(out.filter((e) => e.op === 'promote')).toEqual([{ op: 'promote', id: 'r2', reason: 'first', factIds: ['f-ps5'] }])
+    expect(out.filter((e) => e.op === 'badge')).toHaveLength(6)
+  })
+
+  it('editsToBlocks turns promotes and badges into for_you blocks named after the region or card', () => {
+    const blocks = editsToBlocks(
+      [
+        { op: 'promote', id: 'r2', reason: 'Power banks first for your trips.', factIds: ['f-ps5'] },
+        { op: 'badge', id: 'i1', label: '165W: enough for a MacBook Pro', factIds: ['f-ps5'] },
+        { op: 'hide', ids: ['r1'], label: 'Sale banner', reason: 'not for you' },
+      ],
+      content.segments,
+      regions,
+    )
+    expect(blocks).toEqual([
+      { type: 'for_you', text: 'Moved up: Must-Have Selections. Power banks first for your trips.', factIds: ['f-ps5'] },
+      { type: 'for_you', text: 'Laptop Power Bank (25K, 165W): 165W: enough for a MacBook Pro', factIds: ['f-ps5'] },
+      { type: 'hidden', label: 'Sale banner', reason: 'not for you' },
+    ])
+  })
+})

@@ -35,6 +35,7 @@ const TASKS: Record<string, { load: () => Promise<TaskModule>; usage: string }> 
   gate: { load: () => import('./tasks/gate'), usage: 'gate   (uses cached tailored pages)' },
   speed: { load: () => import('./tasks/speed'), usage: 'speed [--profile <id>] [--lang en]   (live only)' },
   learning: { load: () => import('./tasks/learning'), usage: 'learning [--profile <id>]' },
+  regions: { load: () => import('./tasks/regions'), usage: 'regions   (offline: the page map per saved page, from src/sites)' },
 }
 
 function help(): void {

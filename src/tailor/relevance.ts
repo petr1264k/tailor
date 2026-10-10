@@ -6,6 +6,7 @@
 import type { Fact, FactCategory, PageContent, Profile } from '@/types'
 import { activeFacts } from '@/profile'
 import { layoutChoiceOf } from '@/learn'
+import { siteProfileFor } from '@/sites'
 
 const STOPWORDS = new Set(
   (
@@ -43,6 +44,25 @@ export function pageTokens(content: Pick<PageContent, 'title' | 'text'>): Set<st
   return new Set(tokenize(`${content.title}\n${content.text}`))
 }
 
+/**
+ * The site's vocabulary (SiteProfile.vocabulary): when the page has any word of a synonym group, every word of the
+ * group counts as present, so "owns a MacBook Pro" matches a page that says "laptop" and "100W". Code only.
+ * Also folds the page map's item titles, prices and details into the token set (they are the page, too).
+ */
+export function expandPageTokens(page: Set<string>, content: Pick<PageContent, 'url' | 'regions'>, groups?: string[][]): Set<string> {
+  const out = new Set(page)
+  for (const r of content.regions ?? []) {
+    for (const t of tokenize(r.title)) out.add(t)
+    for (const i of r.items ?? []) for (const t of tokenize(`${i.title} ${i.price ?? ''} ${i.detail ?? ''}`)) out.add(t)
+  }
+  const vocabulary = groups ?? siteProfileFor(content.url).vocabulary
+  for (const group of vocabulary) {
+    const tokens = group.flatMap((w) => tokenize(w))
+    if (tokens.some((t) => out.has(t))) for (const t of tokens) out.add(t)
+  }
+  return out
+}
+
 /** Score of one fact against the page's token set. Exported for tests and for tuning in the eval harness. */
 export function scoreFact(fact: Fact, page: Set<string>): number {
   const valueTokens = new Set(tokenize(fact.value))
@@ -59,7 +79,7 @@ export function scoreFact(fact: Fact, page: Set<string>): number {
 
 /** Only the facts relevant to THIS page go to the model. Code-first (keyword overlap with page text), then an optional model pass (RelevantFactIdsSchema). */
 export async function selectRelevantFacts(profile: Profile, content: PageContent, max = 8): Promise<Fact[]> {
-  const page = pageTokens(content)
+  const page = expandPageTokens(pageTokens(content), content)
   const ranked = activeFacts(profile)
     // Learned layout facts ('layout:specs_first') reach the rewrite as the Layout line (learn.bestLayout), not as facts.
     .filter((fact) => layoutChoiceOf(fact) === null)

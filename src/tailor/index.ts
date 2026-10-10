@@ -14,6 +14,7 @@ import { getSettings } from '@/settings'
 import { getProfile } from '@/profile'
 import { bestLayout, rememberLayout } from '@/learn'
 import { runEditGate, runFidelityGate } from '@/gate'
+import { siteProfileFor } from '@/sites'
 import { selectRelevantFacts } from './relevance'
 import { rewritePage } from './rewrite'
 import { editsToBlocks, proposeEdits } from './edit'
@@ -21,7 +22,7 @@ import { cacheKey, getCachedTailoredPage, setCachedTailoredPage } from './cache'
 
 export { extractPageContent, extractPage, collectSegments, resolveSegment, segmentText } from './extract'
 export type { ExtractedPage, SegmentedPage } from './extract'
-export { selectRelevantFacts, scoreFact, tokenize } from './relevance'
+export { selectRelevantFacts, scoreFact, tokenize, expandPageTokens } from './relevance'
 export { rewritePage, buildRewriteUserPrompt, checkBlocks, chooseLanguage, REWRITE_SYSTEM, LAYOUT_HINTS } from './rewrite'
 export type { RewriteOptions } from './rewrite'
 export { proposeEdits, buildEditUserPrompt, checkEdits, editsToBlocks, promptSegments, EDIT_SYSTEM } from './edit'
@@ -113,11 +114,19 @@ export async function tailorPage(content: PageContent, profile: Profile, setting
   if (segments.length >= MIN_SEGMENTS_FOR_EDITS) {
     const proposed = await proposeEdits(working, facts, options)
     // Fail closed: a gate error fails the run; ungated edits never reach the page.
-    const gated = runEditGate({ edits: proposed, segments, visibleText: content.visibleText, userFactValues: userFactValues(facts) })
+    const regions = content.regions ?? []
+    const gated = runEditGate({
+      edits: proposed,
+      segments,
+      regions,
+      neverHide: siteProfileFor(content.url).policy.neverHide,
+      visibleText: content.visibleText,
+      userFactValues: userFactValues(facts),
+    })
     page = {
       url: content.url,
       profileVersion: profile.version,
-      blocks: editsToBlocks(gated.edits, segments),
+      blocks: editsToBlocks(gated.edits, segments, regions),
       gate: gated.gate,
       edits: gated.edits,
     }

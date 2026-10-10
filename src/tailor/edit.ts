@@ -9,30 +9,38 @@
  *
  * Page text is untrusted: it goes into the user turn inside <page> as data; the system prompt says never to follow it.
  */
-import type { Block, Fact, PageContent, PageEdit, PageSegment } from '@/types'
+import type { Block, Fact, PageContent, PageEdit, PageRegion, PageSegment } from '@/types'
 import { EditOutputSchema } from '@/schemas'
 import { completeJson } from '@/llm/client'
+import { regionOf, regionPromptLines } from '@/sites'
 import { chooseLanguage, LAYOUT_HINTS, type RewriteOptions } from './rewrite'
 import type { Settings } from '@/settings'
 
 export const MAX_PROMPT_SEGMENT_CHARS = 14_000
 export const MAX_PROMPT_JSON_LD_CHARS = 2_000
+export const MAX_PROMPT_REGION_LINES = 40
+/** Caps on structural edits (rule 5a): the page should still look like the site, not a new one. */
+export const MAX_PROMOTES = 5
+export const MAX_BADGES = 6
 
 /** Stable across calls so it is prompt-cached (completeJson sets cache_control). Put nothing volatile here. */
-export const EDIT_SYSTEM = `You edit one web page, in place, for one person, using a few facts about them. The page is given as numbered text elements (id, tag, text). Reply with JSON only: {"edits":[...]}.
+export const EDIT_SYSTEM = `You edit one web page, in place, for one person, using a few facts about them. The page is given as numbered text elements (id, tag, text) and, when it has one, a page map: regions (r1, r2, ...) with a role and a title, and the cards inside them (i1, i2, ...: a product, a category, a collection tile, with its price and one line of detail as the page shows them). Reply with JSON only: {"edits":[...]}.
 
 Edit types (use only these):
 - {"op":"rewrite","id":"s12","text":"...","factIds":["f3"]}: replace that element's text. Same meaning, written for this person: their language, their reading level, their vocabulary, shorter where the original rambles, concrete where it is vague. factIds (optional) name the facts that explain the change (reading level, expertise, language, interests).
 - {"op":"hide","ids":["s30","s31","s32"],"label":"...","reason":"..."}: collapse a run of elements that matter less to this person (slogans, testimonials, press logos, repeated promo copy, sections about things they do not need). label names the part (e.g. "Customer testimonials"), reason says why it matters less to this person.
 - {"op":"note","after":"s3","text":"...","factIds":["f1"]}: a 1-2 sentence note for this person, inserted right after element s3, saying why something on the page matters to them. Cites the facts it relies on.
 - {"op":"warn","after":"s3","text":"...","factIds":["f2"]}: like note, for something on the page that conflicts with this person's facts (budget, compatibility, diet, setup, requirements).
+- {"op":"promote","id":"r7","reason":"...","factIds":["f1"]}: move a whole region to the top of the page content (a product shelf, a collection, a guide), or move a card (an item id, e.g. "i12") to the front of its list. reason is one short sentence on why this comes first for this person, citing facts. The page shows "Moved up for you" with your reason.
+- {"op":"badge","id":"i12","label":"...","factIds":["f1"]}: a tag of at most 8 words on a card (item id) or an element, saying why it fits this person: the spec that matters for their device, the price against their budget, the use they mentioned. Quote the page's own number when there is one.
 
 Rules:
 1. Rewrites use ONLY text, numbers, prices, specs and model names that appear in the page. Copy numbers, prices, units and model names exactly as written: no rounding, no conversions, no synonyms. If the page does not say it, leave it out: code checks every claim against the page and strips what is not there.
 2. Anything about the person (their budget, devices, stack, goals) goes ONLY in note and warn edits that cite factIds. Never inside a rewrite. Never invent fact ids.
 3. Rewrite the elements this person will actually read: the headline, the key paragraphs, list items that carry specs or steps. Leave untouched: labels, menu items, buttons, legal text, prices, and anything already right for them. Do not rewrite an element to say the same thing.
-4. Hide whole runs of consecutive ids, not single words. Never hide prices, specs, steps, warnings, requirements, or an element you anchor a note to.
-5. Put the most useful note or warn near the top of the page (after the headline or the first paragraph that is about the matter). At most 4 notes and 2 warns.
+4. Hide whole runs of consecutive ids, not single words. Region ids (r#) and item ids (i#) may be hidden whole: use them for parts of the page that are not for this person (a membership pitch, a partner promo, reviews, categories they have no device for). Never hide prices, specs, steps, warnings, requirements, the product shelf, or an element you anchor a note to.
+5. Put the most useful note or warn near the top of the page (after the headline, the first region, or the item it is about). At most 4 notes and 2 warns. note/warn "after" may be a region or item id.
+5a. On a page with a map, personalize the STRUCTURE first: promote the region whose items fit this person's devices, needs and budget (at most 2 regions), promote the 1-3 cards that fit them best to the front of their list, badge up to 6 cards with the page's own spec or price that makes them fit (or not), and hide the regions that are not for them. A card that conflicts with a fact (over budget, wrong connector, wrong device) gets a warn after it, not a badge. Items and regions you promote, badge or warn about must exist in the map.
 6. Never include the person's name, and never quote their chats. Use double quotes only around exact page text.
 7. If a Layout line is given, follow it: it is how this person has shown they like pages laid out.
 8. Write every rewrite, note and warn in the requested language at the requested reading level. If the requested language differs from the page's, the rewrites translate the elements you touch.
@@ -88,6 +96,15 @@ export function buildEditUserPrompt(content: PageContent, facts: Fact[], options
   const jsonLd = content.jsonLd.length ? JSON.stringify(content.jsonLd).slice(0, MAX_PROMPT_JSON_LD_CHARS) : ''
   const layout = (options.layout ?? []).map((c) => LAYOUT_HINTS[c]).filter(Boolean)
   const lines = promptSegments(content.segments).map((s) => `${s.id} [${s.tag}] ${oneLine(s.text)}`)
+  const regions = content.regions ?? []
+  const site = content.site
+  const mapLines = regions.length
+    ? [
+        '',
+        `Page map${site ? ` of ${site.name} (${site.host}, a ${site.kind})` : ''} (region id | role | title | items):`,
+        ...regionPromptLines(regions).slice(0, MAX_PROMPT_REGION_LINES),
+      ]
+    : []
 
   return [
     `Language: ${languageLabel(language)}`,
@@ -100,6 +117,7 @@ export function buildEditUserPrompt(content: PageContent, facts: Fact[], options
     '<page>',
     `Title: ${oneLine(content.title)}`,
     `URL: ${promptUrl(content.url)}`,
+    ...mapLines,
     '',
     ...lines,
     ...(jsonLd ? ['', `Structured data (JSON-LD): ${jsonLd}`] : []),
@@ -120,12 +138,24 @@ export function checkEdits(edits: PageEdit[], facts: Fact[]): PageEdit[] {
   const out: PageEdit[] = []
   let notes = 0
   let warns = 0
+  let promotes = 0
+  let badges = 0
+  const promoted = new Set<string>()
   for (const e of edits) {
     if (e.op === 'note' || e.op === 'warn') {
       const factIds = keepIds(e.factIds)
       if (factIds.length === 0) continue
       if (e.op === 'note' && ++notes > 4) continue
       if (e.op === 'warn' && ++warns > 2) continue
+      out.push({ ...e, factIds })
+    } else if (e.op === 'promote' || e.op === 'badge') {
+      // Structural edits are "for you" claims too: no evidence, no edit. One promote per target.
+      const factIds = keepIds(e.factIds)
+      if (factIds.length === 0) continue
+      if (e.op === 'promote') {
+        if (promoted.has(e.id) || ++promotes > MAX_PROMOTES) continue
+        promoted.add(e.id)
+      } else if (++badges > MAX_BADGES) continue
       out.push({ ...e, factIds })
     } else if (e.op === 'rewrite') {
       const factIds = keepIds(e.factIds)
@@ -141,15 +171,27 @@ export function checkEdits(edits: PageEdit[], facts: Fact[]): PageEdit[] {
 /**
  * The same edits in the frozen Block vocabulary (§6), in order, for share (which facts a note cites), learn and the
  * eval. notes → for_you, warns → warning, hides → hidden, rewrites → section (heading = the rewritten headline, or the
- * original text of the element when it is not a heading, so the eval can tell what was rewritten).
+ * original text of the element when it is not a heading, so the eval can tell what was rewritten),
+ * promotes → for_you ("Moved up: <title>. <reason>"), badges → for_you ("<title>: <label>").
  */
-export function editsToBlocks(edits: PageEdit[], segments: PageSegment[]): Block[] {
+export function editsToBlocks(edits: PageEdit[], segments: PageSegment[], regions: PageRegion[] = []): Block[] {
   const byId = new Map(segments.map((s) => [s.id, s]))
+  const titleOf = (id: string): string => {
+    const r = regionOf(id, regions)
+    if (!r) return byId.get(id)?.text ?? id
+    return r.id === id ? r.title : (r.items?.find((i) => i.id === id)?.title ?? id)
+  }
   const blocks: Block[] = []
   for (const e of edits) {
     switch (e.op) {
       case 'note':
         blocks.push({ type: 'for_you', text: e.text, factIds: e.factIds })
+        break
+      case 'promote':
+        blocks.push({ type: 'for_you', text: `Moved up: ${titleOf(e.id)}. ${e.reason}`, factIds: e.factIds })
+        break
+      case 'badge':
+        blocks.push({ type: 'for_you', text: `${titleOf(e.id)}: ${e.label}`, factIds: e.factIds })
         break
       case 'warn':
         blocks.push({ type: 'warning', text: e.text, factIds: e.factIds })

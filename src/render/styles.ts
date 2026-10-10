@@ -93,6 +93,23 @@ export const PANEL_CSS = `
   .gate-pop li + li { margin-top: 5px; }
   .gate-pop .claim { text-decoration: line-through; font-weight: 600; }
 
+  /* Scorecard chip + popover: what changed for this person, measured by code on this page (§8.5) */
+  .bar .score { padding: 7px 10px; border-radius: 999px; max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+                font: 500 11px/1 var(--t-mono); letter-spacing: .04em; text-transform: uppercase; color: #0f7b4f;
+                background: #f1fbf6; box-shadow: inset 0 0 0 1px #bfe3d2; cursor: pointer; }
+  .bar .score:hover { box-shadow: inset 0 0 0 1px #0f7b4f; }
+  .bar .score:empty { display: none; }
+  .score-pop { position: fixed; left: 50%; bottom: 76px; transform: translateX(-50%); z-index: 2147483647;
+               width: min(520px, calc(100vw - 32px)); max-height: 50vh; overflow-y: auto; padding: 14px 16px;
+               background: var(--t-ink); color: #fff; border-radius: 14px; font: 14px/1.45 var(--t-sans);
+               box-shadow: var(--t-shadow-modal); }
+  .score-pop .gate-title { font: 500 11px/1.3 var(--t-mono); letter-spacing: .08em; text-transform: uppercase;
+                           color: var(--t-muted-on-dark); margin-bottom: 8px; }
+  .score-pop table { width: 100%; border-collapse: collapse; }
+  .score-pop td { padding: 6px 0; border-top: 1px solid rgba(255,255,255,.12); vertical-align: top; }
+  .score-pop td:first-child { color: var(--t-muted-on-dark); padding-right: 12px; width: 48%; }
+  .score-pop .foot { margin-top: 8px; color: var(--t-muted-on-dark); font-size: 12px; }
+
   /* ── Fallback panel: a fixed column over a dimmed, blurred backdrop ── */
   .overlay { position: fixed; inset: 0; z-index: 2147483646; background: rgba(9,11,21,.55);
              backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
@@ -229,6 +246,8 @@ export const INPLACE_CSS = `
           border: 1px solid #d3ddf5; border-left: 4px solid #5a52ec; box-shadow: 0 8px 24px -8px rgba(31,33,47,.3); }
   .note.is-warn { border-color: #f3d9a4; border-left-color: #b45309; background: #fff7e6; color: #7c3f0a; }
   .note.is-site { border: 1px dashed #534aa3; background: #f7f8fb; color: #1f212f; padding-right: 18px; }
+  .note.is-move { border-color: #bfe3d2; border-left-color: #0f7b4f; background: #f1fbf6; color: #0f3d2b; }
+  .is-move .kicker { color: #0f7b4f; }
   .kicker { font: 500 11px/1.3 ${MONO}; letter-spacing: .1em; text-transform: uppercase; color: #5a52ec; margin-bottom: 6px; }
   .is-warn .kicker { color: #7c3f0a; }
   .is-site .kicker { color: #534aa3; text-transform: none; letter-spacing: .02em; font-size: 12px; }
@@ -268,4 +287,16 @@ export const WHY_CSS = `
   :host(:hover) .why-pop[hidden] { display: block !important; }
   .why-value { display: block; font-weight: 600; margin-bottom: 4px; }
   .why-quote { display: block; color: #b1bac2; }
+`
+
+/** <tailor-badge>: an inline tag inside a card's title: "FOR YOU · 100W: enough for your MacBook" + why chips. */
+export const BADGE_CSS = `
+  :host { display: inline-flex; align-items: center; gap: 6px; vertical-align: middle; margin: 0 0 0 .5em; position: relative;
+          line-height: 1; font-size: 12px; letter-spacing: normal; text-transform: none; opacity: 1; transform: none; white-space: normal; }
+  :host([hidden]), [hidden] { display: none !important; }
+  .badge { display: inline-flex; align-items: center; gap: 6px; max-width: 420px; padding: 5px 9px 5px 6px; border-radius: 999px;
+           background: #eef0ff; color: #2e2a9b; box-shadow: inset 0 0 0 1px #c9cdf8; font: 500 12px/1.25 ${SANS}; text-align: left; }
+  .badge-kicker { font: 600 9.5px/1 ${MONO}; letter-spacing: .1em; text-transform: uppercase; color: #5a52ec; padding: 3px 5px;
+                  border-radius: 4px; background: #fff; flex: none; }
+  .badge-label { overflow-wrap: anywhere; }
 `

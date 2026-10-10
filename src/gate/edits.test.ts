@@ -57,3 +57,60 @@ describe('runEditGate', () => {
     expect(out.gate.stripped[0]!.reason).toBe('invalid_block')
   })
 })
+
+describe('runEditGate with a page map (promote, badge, region hides)', () => {
+  const regions = [
+    { id: 'r1', role: 'hero' as const, title: 'Fall Savings', segmentIds: ['s1'] },
+    {
+      id: 'r2',
+      role: 'products' as const,
+      title: 'Must-Have Selections',
+      segmentIds: ['s2'],
+      items: [{ id: 'i1', title: 'Laptop Power Bank (25K, 165W)', price: '$129.99', segmentIds: ['s2'] }],
+    },
+    { id: 'r3', role: 'membership' as const, title: 'Become a member', segmentIds: ['s3', 's4'] },
+  ]
+  const mapGate = (edits: PageEdit[]) =>
+    runEditGate({ edits, segments, regions, neverHide: ['products', 'hero'], visibleText: `${visibleText}\n165W $129.99`, userFactValues })
+
+  it('keeps promotes and badges on known ids, drops them on unknown ones, and labels their claims as the user\'s', () => {
+    const out = mapGate([
+      { op: 'promote', id: 'r2', reason: 'Power banks for your PS5 trips come first.', factIds: ['f1'] },
+      { op: 'promote', id: 'r9', reason: 'nope', factIds: ['f1'] },
+      { op: 'badge', id: 'i1', label: '165W: under your $800 budget', factIds: ['f1'] },
+      { op: 'badge', id: 'r2', label: 'badges go on items, not regions', factIds: ['f1'] },
+      { op: 'badge', id: 'i1', label: '   ', factIds: ['f1'] },
+    ])
+    expect(out.edits).toEqual([
+      { op: 'promote', id: 'r2', reason: 'Power banks for your PS5 trips come first.', factIds: ['f1'] },
+      { op: 'badge', id: 'i1', label: '165W: under your $800 budget', factIds: ['f1'] },
+    ])
+    expect(out.gate.stripped.map((s) => s.claim)).toEqual(['promote of unknown r9', 'badge on unknown r2', 'empty badge on i1'])
+    expect(out.gate.stripped.every((s) => s.reason === 'invalid_block' && s.blockType === 'for_you')).toBe(true)
+  })
+
+  it('strips a badge whose number is neither on the page nor the user\'s', () => {
+    const out = mapGate([{ op: 'badge', id: 'i1', label: 'Runs at 240W', factIds: ['f1'] }])
+    expect(out.edits).toEqual([])
+    expect(out.gate.stripped).toEqual([{ blockIndex: 0, blockType: 'for_you', claim: '240W', reason: 'not_on_page' }])
+  })
+
+  it('hides regions and items whole, but never a protected region', () => {
+    const out = mapGate([
+      { op: 'hide', ids: ['r3'], label: 'Membership pitch', reason: 'You buy, you do not join.' },
+      { op: 'hide', ids: ['r2', 'i1'], label: 'The shelf', reason: 'no' },
+      { op: 'hide', ids: ['r1', 's3'], label: 'Hero and a line', reason: 'mixed' },
+    ])
+    expect(out.edits).toEqual([
+      { op: 'hide', ids: ['r3'], label: 'Membership pitch', reason: 'You buy, you do not join.' },
+      { op: 'hide', ids: ['i1'], label: 'The shelf', reason: 'no' },
+      { op: 'hide', ids: ['s3'], label: 'Hero and a line', reason: 'mixed' },
+    ])
+    expect(out.gate.stripped.map((s) => s.claim)).toEqual(['hide of a protected region (r2)', 'hide of a protected region (r1)'])
+  })
+
+  it('accepts a region or item as a note anchor', () => {
+    const out = mapGate([{ op: 'note', after: 'i1', text: 'This one fits the PS5 trips you mentioned.', factIds: ['f1'] }])
+    expect(out.edits).toEqual([{ op: 'note', after: 'i1', text: 'This one fits the PS5 trips you mentioned.', factIds: ['f1'] }])
+  })
+})

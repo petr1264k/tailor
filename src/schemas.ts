@@ -38,6 +38,8 @@ export const PageEditSchema = z.discriminatedUnion('op', [
   z.object({ op: z.literal('hide'), ids: z.array(z.string()), label: z.string(), reason: z.string() }),
   z.object({ op: z.literal('note'), after: z.string(), text: z.string(), factIds: z.array(z.string()) }),
   z.object({ op: z.literal('warn'), after: z.string(), text: z.string(), factIds: z.array(z.string()) }),
+  z.object({ op: z.literal('promote'), id: z.string(), reason: z.string(), factIds: z.array(z.string()) }),
+  z.object({ op: z.literal('badge'), id: z.string(), label: z.string(), factIds: z.array(z.string()) }),
 ])
 
 /** What the in-place edit model must return (§3.5, §3.7). An empty list is valid: the page is already right for this person. */

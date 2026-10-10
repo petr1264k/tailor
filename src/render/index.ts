@@ -21,6 +21,7 @@ import type { Fact, Interaction, StrippedClaim, TailoredPage } from '@/types'
 import type { SharePreview } from '@/messages'
 import { type BlockContext, displayHost, el, evidenceLine, renderBlock } from './blocks'
 import { PANEL_CSS } from './styles'
+import { type Scorecard, scorecardLine, scorecardRows } from './scorecard'
 import {
   appendFromSiteInPlace,
   applyInPlace,
@@ -32,9 +33,11 @@ import {
   type InPlaceTarget,
 } from './inplace'
 
-export { PANEL_CSS, INPLACE_CSS, WHY_CSS } from './styles'
-export { applyInPlace, foldTargets, hasInPlace, inPlaceShown, whyChip } from './inplace'
-export type { InPlaceTarget, ResolveSegment } from './inplace'
+export { PANEL_CSS, INPLACE_CSS, WHY_CSS, BADGE_CSS } from './styles'
+export { applyInPlace, foldTargets, hasInPlace, inPlaceShown, markedElements, whyChip } from './inplace'
+export type { InPlaceTarget, ResolveSegment, ResolveRegion } from './inplace'
+export { buildScorecard, countEdits, countWords, measureSide, scorecardLine, scorecardRows } from './scorecard'
+export type { Scorecard, ScorecardSide } from './scorecard'
 export {
   COLLAPSE_AT,
   blockFactIds,
@@ -74,6 +77,8 @@ export interface TailorUi {
   setGateSummary(checked: number, stripped: number, log?: StrippedClaim[]): void
   /** Shows an error (or any short status) in the bar. Never pass message text here. */
   setStatus(text: string, isError?: boolean): void
+  /** The scorecard chip ("1st match 3.6 screens down → first screen · words 2,870 → 1,140"); clicking it opens the rows. null clears it. */
+  setScorecard(card: Scorecard | null): void
   destroy(): void
 }
 
@@ -116,8 +121,13 @@ export function mountTailorButton(callbacks: RenderCallbacks): TailorUi {
   status.setAttribute('aria-live', 'polite')
   const gatePop = el('div', 'gate-pop')
   gatePop.hidden = true
-  bar.append(button, toggle, share, status)
-  root.append(style, bar, gatePop)
+  const score = el('button', 'score')
+  score.type = 'button'
+  score.setAttribute('aria-label', 'What changed for you on this page')
+  const scorePop = el('div', 'score-pop')
+  scorePop.hidden = true
+  bar.append(button, toggle, share, score, status)
+  root.append(style, bar, gatePop, scorePop)
   document.documentElement.append(host)
 
   let mode: UiMode = 'original'
@@ -148,6 +158,20 @@ export function mountTailorButton(callbacks: RenderCallbacks): TailorUi {
       status.classList.toggle('is-error', isError)
       if (!status.classList.contains('has-log')) gatePop.hidden = true
     },
+    setScorecard(card) {
+      scorePop.hidden = true
+      if (!card) {
+        score.textContent = ''
+        score.hidden = true
+        scorePop.replaceChildren()
+        return
+      }
+      const line = scorecardLine(card)
+      score.hidden = false
+      score.textContent = line
+      score.title = line
+      renderScorePop(scorePop, card)
+    },
     destroy() {
       teardownInPlace(ui)
       teardownPanel(ui)
@@ -156,6 +180,11 @@ export function mountTailorButton(callbacks: RenderCallbacks): TailorUi {
   }
   status.addEventListener('click', () => {
     if (status.classList.contains('has-log')) gatePop.hidden = !gatePop.hidden
+    scorePop.hidden = true
+  })
+  score.addEventListener('click', () => {
+    scorePop.hidden = !scorePop.hidden
+    gatePop.hidden = true
   })
 
   const showError = (err: unknown): void => ui.setStatus(err instanceof Error ? err.message : String(err), true)
@@ -301,6 +330,20 @@ function renderGatePop(pop: HTMLElement, checked: number, log: StrippedClaim[] |
   }
   if (log.length === 0) items.append(el('li', undefined, 'Nothing stripped: every claim was found on the page.'))
   pop.append(items)
+}
+
+/** The scorecard popover: every row measured by code on this page, before vs after the edits (§8.5). */
+function renderScorePop(pop: HTMLElement, card: Scorecard): void {
+  pop.replaceChildren()
+  pop.append(el('div', 'gate-title', `What changed for you · measured on this page (N = ${card.marked} marked)`))
+  const table = el('table')
+  for (const [label, value] of scorecardRows(card)) {
+    const tr = el('tr')
+    tr.append(el('td', undefined, label), el('td', undefined, value))
+    table.append(tr)
+  }
+  pop.append(table)
+  pop.append(el('div', 'foot', `Positions measured at the same scroll offset, before and after. Screen = ${card.viewportHeight} px.`))
 }
 
 function renderGateLog(state: PanelState, gate: TailoredPage['gate']): void {

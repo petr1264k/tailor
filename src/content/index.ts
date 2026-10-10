@@ -12,14 +12,19 @@ import { send } from '@/messages'
 import type { Fact, Interaction, PageContent, TailoredPage } from '@/types'
 import { extractPage, resolveSegment, type ExtractedPage } from '@/tailor/extract'
 import { readAgentHooks, shareEndpoint } from '@/share/hooks'
+import { siteProfileFor } from '@/sites'
 import { toFromSiteBlock } from '@/share/block'
 import { DEMO_FALLBACK_REPLY } from '@/share/fallback'
 import {
+  buildScorecard,
+  markedElements,
+  measureSide,
   mountTailorButton,
   renderConsentSheet,
   renderFromSite,
   renderTailored,
   showOriginal,
+  type InPlaceTarget,
   type TailorUi,
 } from '@/render'
 
@@ -57,9 +62,23 @@ function boot(): void {
     return getExtracted().content
   }
   /** Where each edit lands: the remembered element, or the same text re-found if the site re-rendered (§3.7). */
-  function inPlaceTarget() {
-    const { content, elements } = getExtracted()
-    return { segments: content.segments, resolve: (seg: PageContent['segments'][number]) => resolveSegment(document, seg, elements.get(seg.id)) }
+  function inPlaceTarget(): InPlaceTarget {
+    const { content, elements, regionElements } = getExtracted()
+    const target: InPlaceTarget = {
+      segments: content.segments,
+      resolve: (seg: PageContent['segments'][number]) => resolveSegment(document, seg, elements.get(seg.id)),
+    }
+    if (content.regions) {
+      target.regions = content.regions
+      // Region and card elements are containers; when a site re-renders them we do not re-find them (no safe text key).
+      target.resolveRegion = (id: string) => {
+        const e = regionElements.get(id)
+        return e?.isConnected ? e : null
+      }
+      const after = siteProfileFor(url).policy.promoteAfterRole
+      if (after) target.promoteAfterRole = after
+    }
+    return target
   }
 
   async function tailorNow(ui: TailorUi, force: boolean): Promise<void> {
@@ -70,7 +89,14 @@ function boot(): void {
       const page = current && !force ? current : await send('tailor/run', { content, force })
       current = page
       const profile = await send('profile/get', {})
-      renderTailored(page, liveFacts(profile.facts), ui, inPlaceTarget())
+      const target = inPlaceTarget()
+      // Scorecard (§8.5): the same marked elements measured on the ORIGINAL page, then on the tailored one.
+      showOriginal(ui)
+      const marked = page.edits ? markedElements(page, target) : []
+      const before = measureSide(document, marked)
+      renderTailored(page, liveFacts(profile.facts), ui, target)
+      const after = measureSide(document, marked)
+      ui.setScorecard(page.edits ? buildScorecard(page, before, after, marked.length, window.innerHeight) : null)
       ui.setGateSummary(page.gate.checked, page.gate.stripped.length, page.gate.stripped)
       mode = 'tailored'
     } catch (err) {

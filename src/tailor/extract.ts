@@ -8,6 +8,7 @@
 import { Readability } from '@mozilla/readability'
 import type { PageContent, PageLink } from '@/types'
 import { readAgentHooks } from '@/share/hooks'
+import { collectRegions, siteProfileFor } from '@/sites'
 import { collectSegments } from './segments'
 
 export { collectSegments, resolveSegment, segmentText } from './segments'
@@ -104,6 +105,8 @@ export function readLinks(doc: Document, pageUrl: string): PageLink[] {
 export interface ExtractedPage {
   content: PageContent
   elements: Map<string, Element>
+  /** r# and i# → the live region / card element (src/sites/regions.ts). Never sent. */
+  regionElements: Map<string, Element>
 }
 
 /** Runs in the content script. Readability + JSON-LD + visible text + links + segments (+ coframe agent hooks). */
@@ -115,6 +118,14 @@ export function extractPageContent(doc: Document, url: string): PageContent {
 export function extractPage(doc: Document, url: string): ExtractedPage {
   const visibleText = visibleTextOf(doc)
   const segmented = collectSegments(doc)
+  // The page map: regions, roles and cards, from the site profile (hand-written for known hosts, generic otherwise).
+  const profile = siteProfileFor(url)
+  let regionMap: ReturnType<typeof collectRegions> = { regions: [], elements: new Map() }
+  try {
+    regionMap = collectRegions(doc, segmented.segments, segmented.elements, profile, url)
+  } catch {
+    regionMap = { regions: [], elements: new Map() }
+  }
 
   // Readability mutates the document it parses, so it always gets a clone.
   let article: ReturnType<Readability['parse']> = null
@@ -141,5 +152,7 @@ export function extractPage(doc: Document, url: string): ExtractedPage {
   }
   if (agentHooks) content.agentHooks = agentHooks
   if (lang) content.lang = lang
-  return { content, elements: segmented.elements }
+  if (regionMap.regions.length) content.regions = regionMap.regions
+  if (profile.host !== '*') content.site = { host: profile.host, name: profile.name, kind: profile.kind }
+  return { content, elements: segmented.elements, regionElements: regionMap.elements }
 }

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Fact, PageEdit, PageSegment, TailoredPage } from '@/types'
 import { collectSegments, resolveSegment } from '@/tailor/segments'
-import { mountTailorButton, renderFromSite, renderTailored, showOriginal, showTailored, type RenderCallbacks, type TailorUi } from './index'
+import { mountTailorButton, playTailored, renderFromSite, renderTailored, showOriginal, showTailored, type RenderCallbacks, type TailorUi } from './index'
 import { foldTargets, markedElements, noteAnchor } from './inplace'
 import { buildScorecard, countWords, measureSide, scorecardChip, scorecardLine, scorecardRows } from './scorecard'
 
@@ -487,5 +487,108 @@ describe('scorecard', () => {
     expect(side.words).toBe(3)
     expect(side.firstMatchTop).toBe(0)
     expect(side.onFirstScreen).toBe(1)
+  })
+})
+
+describe('demo mode: the changes play top to bottom', () => {
+  const edits = (): PageEdit[] => [
+    { op: 'note', after: byText('Price'), text: 'Under your $1,500 budget.', factIds: ['f1'] },
+    { op: 'hide', ids: [byText('Loved'), byText('Thousands')], label: 'Customer praise', reason: 'you skip marketing' },
+    { op: 'rewrite', id: byText('Maximize'), text: 'Earn more from the visitors you already have.', factIds: ['f2'] },
+    { op: 'badge', id: byText('Plug in'), label: 'Works with your PS5', factIds: ['f1'] },
+  ]
+
+  it('plays every change in document order, narrates each step, and ends exactly like the instant render', async () => {
+    setup()
+    renderTailored(page(edits()), [ps5, simple], ui!, target())
+    const instant = document.body.innerHTML
+    showOriginal(ui!)
+    const steps: string[] = []
+    const shown = await playTailored(page(edits()), [ps5, simple], ui!, target(), {
+      scroll: false,
+      pace: 0,
+      onStep: (label, i, n) => steps.push(`${i + 1}/${n} ${label}`),
+    })
+    expect(shown).toBe(true)
+    // Top to bottom: the headline, the list item, the praise section, the price line.
+    expect(steps).toEqual([
+      '1/4 Rewriting: Maximize revenue from the demand you already…',
+      '2/4 Tagging: Works with your PS5',
+      '3/4 Folding: Customer praise',
+      '4/4 Note: Under your $1,500 budget.',
+    ])
+    expect(document.querySelector('h1')!.childNodes[0]?.textContent).toBe('Earn more from the visitors you already have.')
+    expect(document.getElementById('praise')!.style.getPropertyValue('display')).toBe('none')
+    expect(hosts('tailor-note')).toHaveLength(1)
+    expect(hosts('tailor-badge')).toHaveLength(1)
+    expect(document.body.innerHTML).toBe(instant)
+  })
+
+  it('promotes play first, before the rest of the page', async () => {
+    setup(`<main><section id="hero"><h1>Hero</h1><p>Welcome to the store.</p></section>
+      <section id="cats"><h2>Categories</h2><p>Browse by room.</p></section>
+      <section id="shelf"><h2>Must-Have</h2><ul><li><h3>Charger A</h3><p>65W, $39</p></li><li><h3>Charger B</h3><p>100W, $59</p></li></ul></section></main>`)
+    const regions = [
+      { id: 'r1', role: 'hero' as const, title: 'Hero', segmentIds: [] },
+      { id: 'r2', role: 'categories' as const, title: 'Categories', segmentIds: [] },
+      { id: 'r3', role: 'products' as const, title: 'Must-Have', segmentIds: [], items: [{ id: 'i1', title: 'Charger A', segmentIds: [] }, { id: 'i2', title: 'Charger B', segmentIds: [] }] },
+    ]
+    const byId: Record<string, Element> = {
+      r1: document.getElementById('hero')!,
+      r2: document.getElementById('cats')!,
+      r3: document.getElementById('shelf')!,
+      i1: document.querySelectorAll('li')[0]!,
+      i2: document.querySelectorAll('li')[1]!,
+    }
+    const t = { ...target(), regions, resolveRegion: (id: string) => byId[id] ?? null, promoteAfterRole: 'hero' as const }
+    const steps: string[] = []
+    await playTailored(
+      page([
+        { op: 'rewrite', id: byText('Welcome'), text: 'Welcome back.' },
+        { op: 'promote', id: 'r3', reason: 'you asked about chargers', factIds: ['f1'] },
+        { op: 'promote', id: 'i2', reason: '100W fits your laptop', factIds: ['f1'] },
+      ]),
+      [ps5],
+      ui!,
+      t,
+      { scroll: false, pace: 0, onStep: (label) => steps.push(label) },
+    )
+    expect(steps).toEqual(['Moving up: Must-Have', 'Moving up: Charger B', 'Rewriting: Welcome to the store.'])
+    expect(document.getElementById('hero')!.nextElementSibling?.id).toBe('shelf')
+    expect(document.querySelector('li h3')!.textContent).toBe('Charger B')
+  })
+
+  it('Original mid-run stops the playback and puts everything back; Tailored then lands at once', async () => {
+    const { onInteraction } = setup()
+    const before = document.querySelector('main')!.innerHTML
+    const steps: string[] = []
+    const shown = await playTailored(page(edits()), [ps5, simple], ui!, target(), {
+      scroll: false,
+      pace: 0,
+      onStep: (label) => {
+        steps.push(label)
+        if (steps.length === 2) showOriginal(ui!) // the user flips to Original while the second change plays
+      },
+    })
+    expect(shown).toBe(false)
+    expect(steps).toHaveLength(2) // the run stopped: nothing after the step that was playing
+    expect(document.querySelector('main')!.innerHTML).toBe(before) // the first change undone, the later ones never applied
+    expect(document.getElementById('specs')!.style.display).toBe('flex') // an edit that never played left no trace
+    expect(hosts('tailor-note')).toHaveLength(0)
+    expect(onInteraction).not.toHaveBeenCalledWith(expect.objectContaining({ kind: 'toggle_original' })) // showOriginal, not the user's toggle
+    showTailored(ui!)
+    expect(document.getElementById('praise')!.style.getPropertyValue('display')).toBe('none')
+    expect(document.querySelector('h1')!.childNodes[0]?.textContent).toBe('Earn more from the visitors you already have.')
+    expect(hosts('tailor-note')).toHaveLength(1)
+    expect(hosts('tailor-badge')).toHaveLength(1)
+    showOriginal(ui!)
+    expect(document.querySelector('main')!.innerHTML).toBe(before)
+  })
+
+  it('a page without edits falls back to the panel and resolves true', async () => {
+    setup()
+    const shown = await playTailored({ ...page([]), edits: undefined, blocks: [{ type: 'summary', text: 'Hi' }] }, [], ui!, target(), { scroll: false, pace: 0 })
+    expect(shown).toBe(true)
+    expect(ui!.root.querySelector('.panel')).toBeTruthy()
   })
 })

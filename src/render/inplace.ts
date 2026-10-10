@@ -6,7 +6,8 @@
  * stood. A note is a sticky note STUCK ON the element it is about: it lives in an overlay (absolutely positioned in
  * <body>), pinned to a corner of the element's box, and follows the element through layout changes (see `placePin`).
  * Each change carries a "why" chip. Original ↔ Tailored puts every original node back: `off()` undoes exactly what
- * `on()` did.
+ * `on()` did. In demo mode the changes PLAY instead of landing at once (`playInPlace`): promotes fly to their new spot
+ * first, then everything else top to bottom, each with its own motion (live.ts), the window following along.
  *
  * Everything we insert is a custom element (<tailor-note>, <tailor-fold>, <tailor-why>) with its own shadow root, so
  * our styles never reach the site and the site's rarely reach us. Text enters the DOM only via textContent /
@@ -16,6 +17,31 @@ import type { BlockType, Fact, PageEdit, PageRegion, PageSegment, RegionRole, Ta
 import type { InteractionEvent, TailorUi } from './index'
 import { displayHost, el, evidenceLine, splitSiteClaims } from './blocks'
 import { BADGE_CSS, INPLACE_CSS, WHY_CSS } from './styles'
+import {
+  MOTION,
+  type Run,
+  animate,
+  badgeIn,
+  bringOnScreen,
+  byDocumentOrder,
+  cancelRun,
+  collapse,
+  dim,
+  finishRun,
+  flip,
+  flipScope,
+  glow,
+  hold,
+  noteIn,
+  onScreen,
+  pause,
+  scrollWindowTo,
+  shortLabel,
+  startRun,
+  stubIn,
+  typeDuration,
+  typewrite,
+} from './live'
 
 /** Finds the live element for a segment (tailor.resolveSegment bound to the document and the remembered elements). */
 export type ResolveSegment = (segment: PageSegment) => Element | null
@@ -34,15 +60,54 @@ export interface InPlaceTarget {
 
 const isMapId = (id: string): boolean => /^[ri]\d+$/.test(id)
 
-/** One applied change. `on` applies it, `off` undoes exactly what `on` did. Both are idempotent. */
-interface Applied {
+/**
+ * One change to the page. `on` applies it, `off` undoes exactly what `on` did, `play` applies it with its motion.
+ * Neither on nor off is re-entrant on its own: the Applied wrapper (turnOn / turnOff) keeps them to one call each.
+ */
+interface Step {
+  op: PageEdit['op'] | 'from_site'
+  /** One line for the bar while the change plays, e.g. "Folding: Customer praise". */
+  label: string
+  /** The element to bring on screen before the change plays; null plays it where the viewport is. */
+  target(): Element | null
   on(): void
   off(): void
+  /**
+   * Applies the change with its motion, calling `on` (never Step.on directly) at the moment the DOM should change.
+   * `on` is a no-op once the run is cancelled, so a motion interrupted by Original ↔ Tailored leaves nothing applied.
+   */
+  play(run: Run, on: () => void): Promise<void>
+}
+
+interface Applied {
+  step: Step
+  /** Whether `on` is in effect right now. */
+  active: boolean
+}
+
+function turnOn(a: Applied, run?: Run): void {
+  if (a.active || run?.cancelled) return
+  a.step.on()
+  a.active = true
+}
+
+function turnOff(a: Applied): void {
+  if (!a.active) return
+  a.step.off()
+  a.active = false
+}
+
+/** Instant on, or a Step whose play() has no motion of its own. */
+const instant = (run: Run, on: () => void): Promise<void> => {
+  if (!run.cancelled) on()
+  return Promise.resolve()
 }
 
 interface InPlaceState {
   applied: Applied[]
   shown: boolean
+  /** The playback in progress (playInPlace), if any. hide/teardown cancel it. */
+  run: Run | null
   dwellStart: number | null
   facts: Map<string, Fact>
   bySegment: Map<string, PageSegment>
@@ -453,21 +518,25 @@ export function teardownInPlace(ui: TailorUi): void {
   const state = states.get(ui.root)
   if (!state) return
   stopDwell(ui, state)
-  for (const a of [...state.applied].reverse()) a.off()
+  if (state.run) cancelRun(state.run)
+  state.run = null
+  for (const a of [...state.applied].reverse()) turnOff(a)
   stopWatching(state)
   window.removeEventListener('pagehide', state.onPageHide)
   states.delete(ui.root)
 }
 
 /**
- * Applies `page.edits` to the live document and shows them. Returns how many edits were applied (an edit whose
- * element is gone is skipped, never half-applied). Re-applying first undoes the previous application.
+ * Applies `page.edits` to the live document and shows them (with `show` false: prepares them for playInPlace or
+ * showInPlace). Returns how many edits were applied (an edit whose element is gone is skipped, never half-applied).
+ * Re-applying first undoes the previous application.
  */
-export function applyInPlace(page: TailoredPage, facts: Fact[], ui: TailorUi, target: InPlaceTarget): number {
+export function applyInPlace(page: TailoredPage, facts: Fact[], ui: TailorUi, target: InPlaceTarget, show = true): number {
   teardownInPlace(ui)
   const state: InPlaceState = {
     applied: [],
     shown: false,
+    run: null,
     dwellStart: null,
     facts: new Map(facts.map((f) => [f.id, f])),
     bySegment: new Map(target.segments.map((s) => [s.id, s])),
@@ -490,6 +559,10 @@ export function applyInPlace(page: TailoredPage, facts: Fact[], ui: TailorUi, ta
   const allSegmentEls = target.segments.map((s) => state.resolve(s)).filter((e): e is Element => !!e)
   const edits = page.edits ?? []
   const regions = target.regions ?? []
+  const regionTitle = (id: string): string => regions.find((r) => r.id === id)?.title ?? regions.flatMap((r) => r.items ?? []).find((i) => i.id === id)?.title ?? ''
+  const push = (step: Step): void => {
+    state.applied.push({ step, active: false })
+  }
 
   // 0. Promotes: a region moves to the top of the content (after the hero run), a card to the front of its list.
   //    Undo puts the node back between its original neighbours. Applied first, so hides and notes see the final order.
@@ -509,7 +582,12 @@ export function applyInPlace(page: TailoredPage, facts: Fact[], ui: TailorUi, ta
     let origParent: Element | null = null
     let origNext: Node | null = null
     const strip = isRegion ? noteHost(edit, state, report) : badgeHost('Moved up for you', edit.reason, edit.factIds, state, report)
-    state.applied.push({
+    /** Where the element lands: after the last promoted region (else the first movable one), or the front of its list. */
+    const destination = (): Element | null => (isRegion ? lastPromotedRegion ?? firstMovable : element.parentElement)
+    push({
+      op: 'promote',
+      label: `Moving up: ${shortLabel(regionTitle(edit.id) || edit.reason)}`,
+      target: destination,
       on: () => {
         origParent = element.parentElement
         origNext = element.nextSibling
@@ -534,6 +612,21 @@ export function applyInPlace(page: TailoredPage, facts: Fact[], ui: TailorUi, ta
         if (isRegion) lastPromotedRegion = null
         else lastPromotedIn.clear()
       },
+      // The element flies from where it was to where it lands; what it displaces slides out of the way. Its strip
+      // (the "moved up" note or badge) stays out of sight until the element has settled, then is pressed on.
+      play: async (run, on) => {
+        const scope = flipScope(element, destination()?.parentElement ?? element.parentElement)
+        let release = (): void => {}
+        void glow(run, element, MOTION.flip + MOTION.glowTail)
+        await flip(run, scope, () => {
+          on()
+          release = hold(run, strip, { opacity: 0 })
+        })
+        if (run.cancelled) return release()
+        placeAll(state) // the pin was placed while the region was still in flight
+        release()
+        await (isRegion ? noteIn(run, strip) : badgeIn(run, strip))
+      },
     })
   }
 
@@ -544,9 +637,28 @@ export function applyInPlace(page: TailoredPage, facts: Fact[], ui: TailorUi, ta
     if (!element) continue
     const original = Array.from(element.childNodes)
     const chips = liveFacts(edit.factIds, state.facts).map((f) => whyChip(f, 'section', report))
-    state.applied.push({
-      on: () => element.replaceChildren(document.createTextNode(edit.text), ...chips),
+    const textNode = document.createTextNode(edit.text)
+    push({
+      op: 'rewrite',
+      label: `Rewriting: ${shortLabel(state.bySegment.get(edit.id)?.text ?? edit.text)}`,
+      target: () => element,
+      on: () => {
+        textNode.data = edit.text
+        element.replaceChildren(textNode, ...chips)
+      },
       off: () => element.replaceChildren(...original),
+      // The old text goes quiet, then the new one types in under a soft glow; the why chips pop in at the end.
+      play: async (run, on) => {
+        const undim = await dim(run, element)
+        if (run.cancelled) return undim()
+        on()
+        const releases = chips.map((c) => hold(run, c, { opacity: 0 }))
+        undim()
+        const ms = typeDuration(edit.text)
+        await Promise.all([typewrite(run, textNode, edit.text, ms), glow(run, element, ms + MOTION.glowTail)])
+        for (const r of releases) r()
+        await Promise.all(chips.map((c) => badgeIn(run, c)))
+      },
     })
   }
 
@@ -573,7 +685,10 @@ export function applyInPlace(page: TailoredPage, facts: Fact[], ui: TailorUi, ta
       report({ kind: expand ? 'expand' : 'collapse', blockType: 'hidden', factIds: [] })
     })
     for (const t of targets) state.foldStubs.set(t, host)
-    state.applied.push({
+    push({
+      op: 'hide',
+      label: `Folding: ${shortLabel(edit.label)}`,
+      target: () => targets[0]!,
       on: () => {
         hideAll()
         expanded = false
@@ -584,6 +699,14 @@ export function applyInPlace(page: TailoredPage, facts: Fact[], ui: TailorUi, ta
       off: () => {
         if (!expanded) showAll()
         host.remove()
+      },
+      // Each part dims and shrinks to a line, then display:none lands and the stub slides into its place.
+      play: async (run, on) => {
+        const releases = await Promise.all(targets.map((t) => collapse(run, t)))
+        on()
+        for (const r of releases) r()
+        if (run.cancelled) return
+        await stubIn(run, host)
       },
     })
   }
@@ -596,9 +719,20 @@ export function applyInPlace(page: TailoredPage, facts: Fact[], ui: TailorUi, ta
     if (!anchor) continue
     const host = noteHost(edit, state, report)
     const placement = edit.after.startsWith('r') ? anchor : placementFor(anchor)
-    state.applied.push({
+    push({
+      op: edit.op,
+      label: `${edit.op === 'warn' ? 'Heads up' : 'Note'}: ${shortLabel(edit.text)}`,
+      // For ordering and scrolling: the stub when the anchor's part is already folded, else the anchor itself.
+      target: () => {
+        const a = visibleAnchor(placement, state)
+        return a.isConnected ? a : placement
+      },
       on: () => pinNote(host, () => visibleAnchor(placement, state), state),
       off: () => host.remove(),
+      play: async (run, on) => {
+        on()
+        await noteIn(run, host)
+      },
     })
   }
 
@@ -608,16 +742,23 @@ export function applyInPlace(page: TailoredPage, facts: Fact[], ui: TailorUi, ta
     const element = resolveId(edit.id)
     if (!element) continue
     const host = badgeHost('For you', edit.label, edit.factIds, state, report)
-    state.applied.push({
+    push({
+      op: 'badge',
+      label: `Tagging: ${shortLabel(edit.label)}`,
+      target: () => element,
       on: () => badgeSlot(element).append(host),
       off: () => host.remove(),
+      play: async (run, on) => {
+        on()
+        await badgeIn(run, host)
+      },
     })
   }
 
   window.addEventListener('pagehide', state.onPageHide)
   startWatching(state)
   states.set(ui.root, state)
-  showInPlace(ui)
+  if (show) showInPlace(ui)
   return state.applied.length
 }
 
@@ -630,31 +771,121 @@ export function appendFromSiteInPlace(ui: TailorUi, text: string, siteUrl: strin
   const host = fromSiteHost(text, siteUrl)
   const placement = anchor ? placementFor(anchor) : document.body
   const applied: Applied = {
-    on: () => pinNote(host, () => visibleAnchor(placement, state), state),
-    off: () => host.remove(),
+    step: {
+      op: 'from_site',
+      label: `From ${displayHost(siteUrl)}`,
+      target: () => (placement === document.body ? null : visibleAnchor(placement, state)),
+      on: () => pinNote(host, () => visibleAnchor(placement, state), state),
+      off: () => host.remove(),
+      play: async (run, on) => {
+        on()
+        await noteIn(run, host)
+      },
+    },
+    active: false,
   }
   state.applied.push(applied)
-  if (state.shown) applied.on()
+  if (state.run) turnOn(applied) // a playback is running: the reply joins the page at once, the run plays on
+  else if (state.shown) void playOne(state, applied)
   else showInPlace(ui)
   return host
 }
 
-/** Applies every change (idempotent) and starts the dwell timer. No-op before anything was applied. */
+/** Plays one late change (the site's reply) on a shown page with its own short run. */
+async function playOne(state: InPlaceState, applied: Applied): Promise<void> {
+  const run = startRun()
+  state.run = run
+  try {
+    await applied.step.play(run, () => turnOn(applied, run))
+  } finally {
+    if (state.run === run) state.run = null
+    finishRun(run)
+  }
+}
+
+/**
+ * Applies every change at once (idempotent) and starts the dwell timer. A playback in progress is cut short: what it
+ * had not reached yet lands now. No-op before anything was applied.
+ */
 export function showInPlace(ui: TailorUi): void {
   const state = states.get(ui.root)
   if (!state) return
-  if (!state.shown) for (const a of state.applied) a.on()
+  if (state.run) cancelRun(state.run)
+  state.run = null
+  for (const a of state.applied) turnOn(a)
   state.shown = true
   if (state.dwellStart === null) state.dwellStart = Date.now()
 }
 
-/** Puts every original node back (idempotent) and reports dwell. The changes stay remembered for an instant re-show. */
+/** Puts every original node back (idempotent), stops any playback, and reports dwell. The changes stay remembered for an instant re-show. */
 export function hideInPlace(ui: TailorUi): void {
   const state = states.get(ui.root)
   if (!state) return
-  if (state.shown) for (const a of [...state.applied].reverse()) a.off()
+  if (state.run) cancelRun(state.run)
+  state.run = null
+  for (const a of [...state.applied].reverse()) turnOff(a)
   state.shown = false
   stopDwell(ui, state)
+}
+
+export interface PlayOptions {
+  /** Called as each change starts, with its one-line label and its place in the sequence (for the bar). */
+  onStep?: (label: string, index: number, total: number) => void
+  /** Steer the window to each change (default true). Off when the caller keeps the viewport, and in tests. */
+  scroll?: boolean
+  /** Multiplier on every duration (default 1). 0 plays everything at once, still in order (tests). */
+  pace?: number
+}
+
+/**
+ * Plays the applied changes instead of showing them at once (demo mode): the window goes to the top, promotes fly to
+ * their new spot, then everything else plays top to bottom, each change brought on screen first and changes already
+ * on screen cascading a beat apart. Resolves with whether the tailored view is on screen when it ends: true after a
+ * full run, true when showInPlace cut it short, false when hideInPlace (Original) stopped it. A reader who scrolls
+ * by hand keeps control of the viewport; the changes still play.
+ */
+export async function playInPlace(ui: TailorUi, opts: PlayOptions = {}): Promise<boolean> {
+  const state = states.get(ui.root)
+  if (!state) return false
+  if (state.shown && !state.run) return true
+  if (state.run) cancelRun(state.run)
+  const run = startRun(opts.pace ?? 1)
+  state.run = run
+  state.shown = true
+  if (state.dwellStart === null) state.dwellStart = Date.now()
+  const scroll = opts.scroll !== false
+  const total = state.applied.length
+  let index = 0
+  const play = async (a: Applied): Promise<void> => {
+    if (run.cancelled || a.active) return
+    opts.onStep?.(a.step.label, index++, total)
+    await a.step.play(run, () => turnOn(a, run))
+  }
+  try {
+    if (scroll) await scrollWindowTo(run, 0)
+    for (const a of state.applied.filter((x) => x.step.op === 'promote')) {
+      if (run.cancelled) break
+      if (scroll) await bringOnScreen(run, a.step.target())
+      await play(a)
+      await pause(run, MOTION.stepGap)
+    }
+    const queue = byDocumentOrder(
+      state.applied.filter((x) => x.step.op !== 'promote'),
+      (a) => a.step.target(),
+    )
+    while (queue.length && !run.cancelled) {
+      const first = queue.shift()!
+      if (scroll) await bringOnScreen(run, first.step.target())
+      const group = [first]
+      while (queue.length && group.length < 6 && (!scroll || onScreen(queue[0]!.step.target()))) group.push(queue.shift()!)
+      await Promise.all(group.map((a, i) => pause(run, i * MOTION.cascade).then(() => play(a))))
+      await pause(run, MOTION.stepGap)
+    }
+    return state.shown
+  } finally {
+    if (state.run === run) state.run = null
+    finishRun(run)
+  }
 }
 
 /**

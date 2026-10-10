@@ -15,6 +15,7 @@
  *    The site keeps its look. Original ↔ Tailored puts the original nodes back.
  *  - PANEL (fallback): pages with no editable text elements (or a cached page without edits) get the block panel:
  *    a fixed column over a dimmed backdrop, rendered from `page.blocks`.
+ * In demo mode (`playTailored`) the in-place edits play one by one, top to bottom, with motion (inplace.playInPlace).
  * The gate checks the visible ORIGINAL page in both cases; extraction happens before anything is changed (§3.6).
  */
 import type { Fact, Interaction, StrippedClaim, TailoredPage } from '@/types'
@@ -28,14 +29,17 @@ import {
   hasInPlace,
   hideInPlace,
   inPlaceShown,
+  playInPlace,
   showInPlace,
   teardownInPlace,
   type InPlaceTarget,
+  type PlayOptions,
 } from './inplace'
 
 export { PANEL_CSS, INPLACE_CSS, WHY_CSS, BADGE_CSS } from './styles'
-export { applyInPlace, foldTargets, hasInPlace, inPlaceShown, markedElements, whyChip } from './inplace'
-export type { InPlaceTarget, ResolveSegment, ResolveRegion } from './inplace'
+export { applyInPlace, foldTargets, hasInPlace, inPlaceShown, markedElements, playInPlace, whyChip } from './inplace'
+export type { InPlaceTarget, PlayOptions, ResolveSegment, ResolveRegion } from './inplace'
+export { MOTION } from './live'
 export { buildScorecard, countEdits, countWords, measureSide, scorecardChip, scorecardLine, scorecardRows } from './scorecard'
 export type { Scorecard, ScorecardSide } from './scorecard'
 export {
@@ -364,12 +368,7 @@ function renderGateLog(state: PanelState, gate: TailoredPage['gate']): void {
  */
 export function renderTailored(page: TailoredPage, facts: Fact[], ui: TailorUi, target?: InPlaceTarget): void {
   if (page.edits && target) {
-    const panel = panels.get(ui.root)
-    if (panel) {
-      panel.overlay.hidden = true
-      teardownPanel(ui)
-      panel.overlay.remove()
-    }
+    dropPanel(ui)
     applyInPlace(page, facts, ui, target)
     ui.setMode('tailored')
     return
@@ -384,6 +383,32 @@ export function renderTailored(page: TailoredPage, facts: Fact[], ui: TailorUi, 
   for (const block of page.blocks) appendBlock(state, block, ctx)
   state.panel.scrollTop = 0
   showTailored(ui)
+}
+
+/**
+ * Demo mode: like renderTailored for a page with edits, but the changes PLAY (§9: "the page re-fits itself"): promotes
+ * fly into place, then every change top to bottom with its motion, the window following. The bar shows "Tailored" from
+ * the start so Original can stop the run. Resolves with whether the tailored view is on screen at the end (false when
+ * the user flipped to Original mid-run). Pages without edits fall back to renderTailored (the panel) and resolve true.
+ */
+export async function playTailored(page: TailoredPage, facts: Fact[], ui: TailorUi, target: InPlaceTarget, opts: PlayOptions = {}): Promise<boolean> {
+  if (!page.edits) {
+    renderTailored(page, facts, ui, target)
+    return true
+  }
+  dropPanel(ui)
+  applyInPlace(page, facts, ui, target, false)
+  ui.setMode('tailored')
+  return playInPlace(ui, opts)
+}
+
+/** An in-place render replaces any block panel. */
+function dropPanel(ui: TailorUi): void {
+  const panel = panels.get(ui.root)
+  if (!panel) return
+  panel.overlay.hidden = true
+  teardownPanel(ui)
+  panel.overlay.remove()
 }
 
 /** Puts the original back (in-place edits undone, or the panel hidden; both remembered), reports dwell, bar → Original. */

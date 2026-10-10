@@ -1,6 +1,7 @@
 /**
  * Popup (Owner: Petr). Key entry, active profile, "Tailor this page" / "Show original" / "Share with this site",
- * status with gate counts (§3.6), "Tailor pages automatically as they load" (§3.5, on by default). CONTEXT.txt §3.5–3.9, §4.
+ * status with gate counts (§3.6), "Tailor pages automatically as they load" (§3.5, on by default), demo mode (§9, on by
+ * default: the changes play top to bottom with motion). CONTEXT.txt §3.5–3.9, §4.
  * Runs in the extension origin: reads settings and profiles directly; talks to the page via sendToTab.
  * Every call is wrapped; errors show inline. Look: coframe.com (src/ui/theme.css).
  */
@@ -27,6 +28,7 @@ export function App() {
   const [apiTest, setApiTest] = useState<string | null>(null)
   const [profileName, setProfileName] = useState('')
   const [autoTailor, setAutoTailor] = useState(true)
+  const [demoMode, setDemoMode] = useState(true)
   const [status, setStatus] = useState<ContentStatus | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -37,6 +39,7 @@ export function App() {
       if (!s.ok) return setError(s.error)
       setKey(s.value.anthropicKey ?? '')
       setAutoTailor(s.value.autoTailorOnLoad)
+      setDemoMode(s.value.demoMode)
       setProfileName(s.value.activeProfileId)
       const list = await attempt(listProfiles)
       const name = list.ok ? list.value.find((p) => p.id === s.value.activeProfileId)?.name : undefined
@@ -77,6 +80,15 @@ export function App() {
     const r = await attempt(() => setSettings({ autoTailorOnLoad: on }))
     if (!r.ok) {
       setAutoTailor(!on)
+      setError(r.error)
+    }
+  }
+
+  async function toggleDemoMode(on: boolean) {
+    setDemoMode(on)
+    const r = await attempt(() => setSettings({ demoMode: on }))
+    if (!r.ok) {
+      setDemoMode(!on)
       setError(r.error)
     }
   }
@@ -135,6 +147,10 @@ export function App() {
           <label className="check">
             <input type="checkbox" checked={autoTailor} onChange={(e) => void toggleAutoTailor(e.target.checked)} />
             Tailor pages automatically as they load
+          </label>
+          <label className="check" title="The changes play one by one from the top of the page down, with motion, and the window follows. Off: they land at once.">
+            <input type="checkbox" checked={demoMode} onChange={(e) => void toggleDemoMode(e.target.checked)} />
+            Demo mode: play the changes top to bottom
           </label>
           <label className="field">
             <span className="hint">Anthropic API key (stays in this browser)</span>

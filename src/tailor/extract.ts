@@ -7,7 +7,7 @@
  */
 import { Readability } from '@mozilla/readability'
 import type { CoframeAgentHooks, PageContent, PageLink } from '@/types'
-import { readAgentHooks } from '@/share'
+import { readAgentHooks } from '@/share/hooks'
 
 /** Readability text shorter than this is treated as a failed parse; we fall back to the raw body text. */
 export const MIN_READABLE_CHARS = 200

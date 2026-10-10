@@ -80,7 +80,7 @@ export const PANEL_CSS = `
   .bar[data-mode='tailored'] .view::after { content: 'Tailored'; display: inline-block; margin-left: 6px; }
   .bar[data-mode='original'] .view::before { margin-right: 6px; }
 
-  .bar .status { padding: 0 8px 0 4px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  .bar .status { padding: 0 8px 0 4px; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
                  font: 500 9.5px/1.3 var(--t-mono); letter-spacing: .04em; text-transform: uppercase; color: var(--t-muted);
                  background: none; border-radius: 0; cursor: default; }
   .bar .status:empty { display: none; }

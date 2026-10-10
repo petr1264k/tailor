@@ -160,7 +160,10 @@ export function mountTailorButton(callbacks: RenderCallbacks): TailorUi {
       status.textContent = text
       status.title = text // the bar truncates long statuses
       status.classList.toggle('is-error', isError)
-      if (!status.classList.contains('has-log')) gatePop.hidden = true
+      // A plain status (a demo step, an error, "Learned: …") replaces the gate line: shown at rest, opens nothing.
+      // setGateSummary puts has-log back after it calls this.
+      status.classList.remove('has-log')
+      gatePop.hidden = true
     },
     setScorecard(card) {
       scorePop.hidden = true

@@ -220,7 +220,7 @@ export const PANEL_CSS = `
 export const INPLACE_CSS = `
   :host { display: block; margin: 14px 0; max-width: 72ch; text-align: left; opacity: 1; transform: none; }
   *, *::before, *::after { box-sizing: border-box; }
-  [hidden] { display: none !important; }
+  :host([hidden]), [hidden] { display: none !important; }
   button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; padding: 0; margin: 0; }
   button:focus-visible { outline: 2px solid #5a52ec; outline-offset: 2px; }
 
@@ -254,7 +254,7 @@ export const INPLACE_CSS = `
 export const WHY_CSS = `
   :host { display: inline-block; vertical-align: middle; margin-left: .4em; position: relative; line-height: 1;
           font-size: 12px; letter-spacing: normal; text-transform: none; opacity: 1; transform: none; }
-  [hidden] { display: none !important; }
+  :host([hidden]), [hidden] { display: none !important; }
   button { font: inherit; cursor: pointer; border: 0; background: none; padding: 0; margin: 0; }
   button:focus-visible { outline: 2px solid #5a52ec; outline-offset: 2px; }
   .why { padding: 5px 8px; border-radius: 6px; background: #fff; color: #5a52ec; box-shadow: inset 0 0 0 1px #d3ddf5; white-space: nowrap;

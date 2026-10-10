@@ -143,6 +143,8 @@ describe('in-place edits', () => {
     expect(inShadow(notes[0]!, 'tailor-why')).toBeTruthy()
     inShadow<HTMLButtonElement>(notes[1]!, '.dismiss').click()
     expect(notes[1]!.hidden).toBe(true)
+    // The host has its own display rule, so the shadow stylesheet must hide the host itself, not just its children.
+    expect(inShadow(notes[1]!, 'style').textContent).toContain(':host([hidden])')
     expect(onInteraction).toHaveBeenLastCalledWith({ kind: 'ignore', blockType: 'warning', factIds: ['f1'] })
   })
 

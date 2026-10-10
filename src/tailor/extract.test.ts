@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { readAgentHooks } from '@/share'
+import { readAgentHooks } from '@/share/hooks'
 import { extractPageContent } from './extract'
 
 // share.readAgentHooks may still be a TODO stub; control it here so these tests do not depend on it.
-vi.mock('@/share', () => ({ readAgentHooks: vi.fn(() => null) }))
+vi.mock('@/share/hooks', () => ({ readAgentHooks: vi.fn(() => null) }))
 
 const URL_ = 'https://shop.example.com/tv/qn90d?ref=home#reviews'
 

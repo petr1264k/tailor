@@ -42,6 +42,8 @@ export interface RequestMap {
   ping: { req: Empty; res: { ok: true; at: string } }
   'settings/get': { req: Empty; res: Settings }
   'settings/set': { req: { patch: Partial<Settings> }; res: Settings }
+  /** Makes one tiny rewrite call with the stored key and returns the full error text on failure (popup diagnostic). */
+  'llm/test': { req: Empty; res: { ok: boolean; model: string; ms: number; error?: string } }
   'import/run': {
     req: { origin: ChatOrigin; json: unknown; options?: ImportOptions }
     res: {

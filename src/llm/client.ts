@@ -38,14 +38,22 @@ export class LlmError extends Error {
   }
 }
 
-let cached: { key: string; client: Anthropic } | null = null
+let cached: { cacheKey: string; client: Anthropic } | null = null
 
 export async function getClient(): Promise<Anthropic> {
-  const { anthropicKey } = await getSettings()
+  const { anthropicKey, anthropicWorkspaceId } = await getSettings()
   if (!anthropicKey) throw new LlmError('missing_key', 'No Anthropic API key. Paste one in the Tailor popup.')
-  if (cached?.key === anthropicKey) return cached.client
-  const client = new Anthropic({ apiKey: anthropicKey, dangerouslyAllowBrowser: true, maxRetries: 2 })
-  cached = { key: anthropicKey, client }
+  const workspaceId = anthropicWorkspaceId?.trim() || undefined
+  const cacheKey = `${anthropicKey}|${workspaceId ?? ''}`
+  if (cached?.cacheKey === cacheKey) return cached.client
+  const client = new Anthropic({
+    apiKey: anthropicKey,
+    dangerouslyAllowBrowser: true,
+    maxRetries: 2,
+    // Org-level keys must name a workspace; workspace-scoped keys ignore this header.
+    ...(workspaceId ? { defaultHeaders: { 'anthropic-workspace-id': workspaceId } } : {}),
+  })
+  cached = { cacheKey, client }
   return client
 }
 
@@ -95,6 +103,8 @@ export async function completeJson<T>(opts: CompleteJsonOptions<T>): Promise<Com
       output_config: { effort: opts.effort ?? 'low' },
     })
   } catch (e) {
+    // Full body in the service worker console (chrome://extensions → Tailor → Inspect views: service worker).
+    console.error('[tailor] Anthropic API error', { model, status: (e as { status?: number }).status, message: (e as Error).message })
     if (e instanceof Anthropic.RateLimitError) throw new LlmError('rate_limit', 'Rate limited by the API', e)
     if (e instanceof Anthropic.APIConnectionError) throw new LlmError('network', 'Could not reach the API', e)
     if (e instanceof Anthropic.APIError) throw new LlmError('api', `API error ${e.status}: ${e.message}`, e)

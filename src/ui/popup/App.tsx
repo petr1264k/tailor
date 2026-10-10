@@ -6,12 +6,12 @@
  */
 import { useEffect, useState } from 'react'
 import { getSettings, setSettings } from '@/settings'
-import { sendToTab, type ContentCommand, type ContentStatus } from '@/messages'
+import { send, sendToTab, type ContentCommand, type ContentStatus } from '@/messages'
 import { listProfiles } from '@/profile'
 import { attempt } from '../profile/helpers'
 import { describeStatus } from './status'
 
-const NOT_RUNNING = 'Tailor is not running on this tab. Reload the page; chrome:// pages are off limits.'
+const NOT_RUNNING = 'Tailor is not on this tab. Switch to a normal web page (Chrome blocks every extension on chrome:// and the Web Store), or reload a page that was open before the extension loaded.'
 const POLL_MS = 1000
 const POLL_MAX = 90
 
@@ -22,7 +22,9 @@ async function activeTabId(): Promise<number | undefined> {
 
 export function App() {
   const [key, setKey] = useState('')
+  const [workspaceId, setWorkspaceId] = useState('')
   const [saved, setSaved] = useState(false)
+  const [apiTest, setApiTest] = useState<string | null>(null)
   const [profileName, setProfileName] = useState('')
   const [pretailor, setPretailor] = useState(false)
   const [status, setStatus] = useState<ContentStatus | null>(null)
@@ -34,6 +36,7 @@ export function App() {
       const s = await attempt(getSettings)
       if (!s.ok) return setError(s.error)
       setKey(s.value.anthropicKey ?? '')
+      setWorkspaceId(s.value.anthropicWorkspaceId ?? '')
       setPretailor(s.value.pretailorOnLoad)
       setProfileName(s.value.activeProfileId)
       const list = await attempt(listProfiles)
@@ -63,7 +66,9 @@ export function App() {
   }
 
   async function saveKey() {
-    const r = await attempt(() => setSettings({ anthropicKey: key.trim() || undefined }))
+    const r = await attempt(() =>
+      setSettings({ anthropicKey: key.trim() || undefined, anthropicWorkspaceId: workspaceId.trim() || undefined }),
+    )
     if (r.ok) setSaved(true)
     else setError(r.error)
   }
@@ -130,7 +135,34 @@ export function App() {
           placeholder="sk-ant-…"
         />
       </label>
+      <label style={{ display: 'grid', gap: 4 }}>
+        <span>Workspace ID (only if the key is an org-level key; console → Settings → Workspaces)</span>
+        <input
+          value={workspaceId}
+          onChange={(e) => {
+            setWorkspaceId(e.target.value)
+            setSaved(false)
+          }}
+          placeholder="wrkspc_…"
+        />
+      </label>
       <button onClick={() => void saveKey()}>{saved ? 'Saved' : 'Save key'}</button>
+      <button
+        onClick={() => {
+          setApiTest('Testing…')
+          void send('llm/test', {}).then(
+            (r) => setApiTest(r.ok ? `OK: ${r.model} answered in ${r.ms} ms` : `FAILED (${r.model}, ${r.ms} ms)\n${r.error ?? ''}`),
+            (err: unknown) => setApiTest(`FAILED\n${err instanceof Error ? err.message : String(err)}`),
+          )
+        }}
+      >
+        Test API key
+      </button>
+      {apiTest && (
+        <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: 11, margin: 0, padding: 8, background: '#f3f3f3', userSelect: 'text', maxHeight: 220, overflow: 'auto' }}>
+          {apiTest}
+        </pre>
+      )}
     </div>
   )
 }

@@ -7,6 +7,8 @@ import type { HandlerMap } from '@/messages'
 
 export interface Settings {
   anthropicKey?: string
+  /** Required by Anthropic when the key is an org-level key (not scoped to a workspace). Sent as the anthropic-workspace-id header. */
+  anthropicWorkspaceId?: string
   googleKey?: string
   openrouterKey?: string
   /** Which provider does fast rewrites. Gemini Flash-Lite is the alternative if it is faster on the day (§5). */

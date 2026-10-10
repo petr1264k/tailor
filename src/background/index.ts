@@ -5,6 +5,7 @@
 import type { HandlerMap, Request, RequestType } from '@/messages'
 import { isErrorResponse } from '@/messages'
 import { settingsHandlers } from '@/settings'
+import { llmHandlers } from '@/llm/handlers'
 import { handlers as archiveHandlers } from '@/archive'
 import { handlers as importHandlers } from '@/import'
 import { handlers as extractHandlers } from '@/extract'
@@ -16,6 +17,7 @@ import { handlers as shareHandlers } from '@/share'
 const registry: HandlerMap = {
   ping: async () => ({ ok: true, at: new Date().toISOString() }),
   ...settingsHandlers,
+  ...llmHandlers,
   ...archiveHandlers,
   ...importHandlers,
   ...extractHandlers,

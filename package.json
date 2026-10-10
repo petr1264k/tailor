@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "eval": "tsx eval/run.ts",
-    "check": "npm run typecheck && npm run test && npm run build"
+    "check": "npm run typecheck && npm run test && npm run build",
+    "smoke": "tsx scripts/api-smoke.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.133.0",

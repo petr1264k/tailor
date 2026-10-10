@@ -123,7 +123,27 @@ function whyRow(facts: Fact[], blockType: BlockType, report: (e: InteractionEven
 
 const KICKER: Record<'note' | 'warn' | 'promote', string> = { note: 'For you', warn: 'Heads up', promote: 'Moved up for you' }
 
-/** A personal note (for_you), warning, or "moved up" strip, inserted into the page. ✕ hides it and reports ignore. */
+/** Leans a note picks from: some straight, most a little off, like notes stuck on by hand. Paired with a sideways nudge. */
+const TILTS = ['-2.2deg', '0deg', '1.6deg', '-0.9deg', '2.4deg', '0deg', '-1.4deg', '1.1deg']
+const NUDGES = ['0px', '18px', '6px', '26px', '12px', '2px', '22px', '9px']
+
+/**
+ * A sticky note: tape + paper, leaning its own way. The lean comes from the note's text, so the same note keeps its
+ * lean across re-renders and two notes next to each other almost never lean alike.
+ */
+function stickyNote(paper: HTMLElement, seed: string): HTMLElement {
+  let h = 0
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0
+  const sticky = el('div', 'sticky')
+  sticky.style.setProperty('--tilt', TILTS[h % TILTS.length]!)
+  sticky.style.setProperty('--nudge', NUDGES[(h >>> 4) % NUDGES.length]!)
+  const tape = el('span', 'tape')
+  tape.setAttribute('aria-hidden', 'true')
+  sticky.append(tape, paper)
+  return sticky
+}
+
+/** A personal note (for_you), warning, or "moved up" sticky, stuck onto the page. ✕ hides it and reports ignore. */
 function noteHost(edit: Extract<PageEdit, { op: 'note' | 'warn' | 'promote' }>, state: InPlaceState, report: (e: InteractionEvent) => void): HTMLElement {
   const { host, root } = shadowHost('tailor-note', INPLACE_CSS)
   const blockType = BLOCK_TYPE_OF[edit.op]
@@ -143,7 +163,7 @@ function noteHost(edit: Extract<PageEdit, { op: 'note' | 'warn' | 'promote' }>, 
     report({ kind: 'ignore', blockType, factIds: edit.factIds })
   })
   note.append(x)
-  root.append(note)
+  root.append(stickyNote(note, edit.op === 'promote' ? edit.reason : edit.text))
   return host
 }
 
@@ -164,7 +184,7 @@ function fromSiteHost(text: string, siteUrl: string): HTMLElement {
     body.append(span)
   }
   note.append(el('div', 'kicker', `From ${displayHost(siteUrl)} · the site's own words`), body)
-  root.append(note)
+  root.append(stickyNote(note, text))
   return host
 }
 

@@ -231,31 +231,55 @@ export const PANEL_CSS = `
 
 /**
  * Styles for the elements we insert INTO the page (each has its own shadow root, so nothing here reaches the site):
- * notes, fold stubs and "why" chips. They inherit the site's font family (no \`all: initial\`) so they read as part of
- * the page, but fix their own colors and background so they stay legible on any section, dark or light.
+ * notes, fold stubs and "why" chips.
+ *
+ * Notes are STICKY NOTES: as if a person went over the page and stuck notes on it. Paper colour per kind (yellow =
+ * for you, coral = heads up, mint = moved up, blue = the site's own words), a strip of tape at the top, a curled
+ * bottom-right corner, and a slight lean that differs note to note (--tilt / --nudge are set per note in inplace.ts,
+ * from the note's text, so a note keeps its lean across re-renders). Hover straightens and lifts the note. The paper
+ * brings its own font and colours, so it reads as a note ON the page, not part of it, and stays legible on any site.
+ * Fold stubs keep the site's font: they stand in for the site's own content.
  */
 export const INPLACE_CSS = `
-  :host { display: block; margin: 14px 0; max-width: 72ch; text-align: left; opacity: 1; transform: none; }
+  :host { display: block; position: relative; z-index: 2; margin: 16px 0 22px; max-width: 72ch; text-align: left; opacity: 1; transform: none; }
   *, *::before, *::after { box-sizing: border-box; }
   :host([hidden]), [hidden] { display: none !important; }
   button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; padding: 0; margin: 0; }
   button:focus-visible { outline: 2px solid #5a52ec; outline-offset: 2px; }
 
-  .note { position: relative; font-family: inherit; font-size: clamp(14px, 1rem, 18px); line-height: 1.5; font-weight: 400;
-          letter-spacing: normal; text-transform: none; color: #1f212f; background: #fff; border-radius: 12px; padding: 14px 52px 14px 18px;
-          border: 1px solid #d3ddf5; border-left: 4px solid #5a52ec; box-shadow: 0 8px 24px -8px rgba(31,33,47,.3); }
-  .note.is-warn { border-color: #f3d9a4; border-left-color: #b45309; background: #fff7e6; color: #7c3f0a; }
-  .note.is-site { border: 1px dashed #534aa3; background: #f7f8fb; color: #1f212f; padding-right: 18px; }
-  .note.is-move { border-color: #bfe3d2; border-left-color: #0f7b4f; background: #f1fbf6; color: #0f3d2b; }
-  .is-move .kicker { color: #0f7b4f; }
-  .kicker { font: 500 11px/1.3 ${MONO}; letter-spacing: .1em; text-transform: uppercase; color: #5a52ec; margin-bottom: 6px; }
-  .is-warn .kicker { color: #7c3f0a; }
-  .is-site .kicker { color: #534aa3; text-transform: none; letter-spacing: .02em; font-size: 12px; }
+  /* ── Sticky note. .sticky leans, casts the shadow (drop-shadow follows the curled corner) and holds the tape;
+        .note is the paper. Each kind sets its own paper and ink. ── */
+  .sticky { position: relative; width: fit-content; min-width: min(100%, 240px); max-width: 100%; margin-left: var(--nudge, 0px); padding-top: 10px;
+            transform: rotate(var(--tilt, -1.5deg)); transform-origin: 50% 0;
+            filter: drop-shadow(0 1px 1px rgba(31,33,47,.10)) drop-shadow(0 12px 14px rgba(31,33,47,.22));
+            transition: transform .25s cubic-bezier(.4,0,.2,1), filter .25s cubic-bezier(.4,0,.2,1); }
+  .sticky:hover { transform: rotate(0deg) translateY(-2px);
+                  filter: drop-shadow(0 1px 1px rgba(31,33,47,.10)) drop-shadow(0 18px 22px rgba(31,33,47,.28)); }
+  .tape { position: absolute; z-index: 2; top: 0; left: 50%; width: 88px; height: 22px; pointer-events: none;
+          transform: translateX(-50%) rotate(calc(var(--tilt, -1.5deg) * -1.6));
+          background: linear-gradient(90deg, rgba(222,223,232,.72), rgba(238,239,246,.8) 30%, rgba(238,239,246,.8) 70%, rgba(222,223,232,.72));
+          box-shadow: inset 0 0 0 1px rgba(255,255,255,.5), 0 1px 2px rgba(31,33,47,.14);
+          clip-path: polygon(0 12%, 2% 0, 50% 3%, 98% 0, 100% 10%, 99% 55%, 100% 92%, 97% 100%, 50% 97%, 2% 100%, 0 88%, 1% 45%); }
+
+  .note { position: relative; max-width: 360px; /* px on purpose: a % here is cyclic inside the fit-content wrapper */
+          font-family: ${SANS}; font-size: 15.5px; line-height: 1.45; font-weight: 400; letter-spacing: normal; text-transform: none;
+          -webkit-font-smoothing: antialiased; color: var(--ink); padding: 22px 48px 22px 20px; border-radius: 1px;
+          --paper-0: #fffac8; --paper: #fff176; --paper-2: #f6dc48; --ink: #1f212f; --label: #2d2860;
+          background: linear-gradient(172deg, var(--paper-0) 0%, var(--paper) 42%, var(--paper-2) 100%);
+          clip-path: polygon(0 0, 100% 0, 100% calc(100% - 22px), calc(100% - 22px) 100%, 0 100%); }
+  .note::after { content: ''; position: absolute; right: 0; bottom: 0; width: 22px; height: 22px;
+                 background: linear-gradient(to top left, transparent 48%, rgba(31,33,47,.24) 50%, rgba(255,255,255,.65) 100%); }
+  .note.is-warn { --paper-0: #ffe8dc; --paper: #ffc9ae; --paper-2: #ffb08a; --ink: #4a1d05; --label: #9a3d0d; }
+  .note.is-move { --paper-0: #e4fcec; --paper: #bdf2d0; --paper-2: #9ce6b8; --ink: #0f3d2b; --label: #0f7b4f; }
+  .note.is-site { --paper-0: #e9f1ff; --paper: #cbdcff; --paper-2: #b2c9fb; --ink: #1f212f; --label: #2e4f9e; max-width: 460px; padding-right: 24px; }
+  .kicker { font: 600 10.5px/1.3 ${MONO}; letter-spacing: .12em; text-transform: uppercase; color: var(--label); margin-bottom: 7px; }
+  .is-site .kicker { text-transform: none; letter-spacing: .02em; font-size: 12px; font-weight: 500; }
   .text { margin: 0; white-space: pre-line; overflow-wrap: anywhere; }
-  .dismiss { position: absolute; top: 8px; right: 8px; width: 32px; height: 32px; border-radius: 999px; font-size: 15px;
-             line-height: 32px; text-align: center; color: #6b7084; }
-  .dismiss:hover { background: rgba(31,33,47,.07); }
+  .dismiss { position: absolute; top: 10px; right: 10px; width: 28px; height: 28px; border-radius: 999px; font-size: 14px;
+             line-height: 28px; text-align: center; color: var(--ink); opacity: .5; }
+  .dismiss:hover { opacity: 1; background: rgba(31,33,47,.08); }
   .site-claim { text-decoration: underline dotted; text-underline-offset: 3px; font-weight: 600; cursor: help; }
+  @media (prefers-reduced-motion: reduce) { .sticky { transition: none; } }
 
   .fold { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-family: inherit;
           font-size: 13.5px; line-height: 1.4; font-weight: 400; letter-spacing: normal; text-transform: none; color: #6b7084;

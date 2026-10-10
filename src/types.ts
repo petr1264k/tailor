@@ -236,19 +236,73 @@ export interface PageSegment {
 }
 
 /**
- * An edit to the live page, keyed to PageSegment ids. The model proposes these (EditOutputSchema), code checks them
- * (tailor.checkEdits, then gate.runEditGate) and the renderer applies them to the site's own DOM (§3.7, in place).
+ * An edit to the live page, keyed to PageSegment ids (s#) and, where the page has a map (PageRegion), region ids (r#)
+ * and item ids (i#). The model proposes these (EditOutputSchema), code checks them (tailor.checkEdits, then
+ * gate.runEditGate) and the renderer applies them to the site's own DOM (§3.7, in place).
  * - rewrite: replace the element's text (same element, same site styles). Page facts only; optional factIds say why.
- * - hide: collapse a group of elements into a one-line stub where they stood. label names it, reason says why.
- * - note / warn: a personal note inserted right after the anchor element, citing the facts it relies on.
+ * - hide: collapse a group of elements (or whole regions / items) into a one-line stub where they stood.
+ * - note / warn: a personal note inserted right after the anchor (element, region or item), citing the facts it relies on.
+ * - promote: move a region to the top of the content, or an item to the front of its list, with a "moved up for you" strip.
+ * - badge: a short tag on an item or element saying why it fits this person.
  */
 export type PageEdit =
   | { op: 'rewrite'; id: string; text: string; factIds?: string[] }
   | { op: 'hide'; ids: string[]; label: string; reason: string }
   | { op: 'note'; after: string; text: string; factIds: string[] }
   | { op: 'warn'; after: string; text: string; factIds: string[] }
+  /** Move a region (r#) to the top of the page content, or an item (i#) to the front of its list. The reason cites facts. */
+  | { op: 'promote'; id: string; reason: string; factIds: string[] }
+  /** A short tag on an item (i#) or element (s#) saying why it fits this person, e.g. "100W: enough for your MacBook Pro". */
+  | { op: 'badge'; id: string; label: string; factIds: string[] }
 
 export type PageEditOp = PageEdit['op']
+
+/** What kind of site a profile describes; the prompt and the policy (src/sites) key off it. */
+export type SiteKind = 'storefront' | 'docs' | 'article' | 'marketing' | 'generic'
+
+/**
+ * Roles a top-level region of a page can play. Code assigns them from the site profile (selectors and heading
+ * patterns, src/sites); the model only reads them. 'section' is the fallback.
+ */
+export type RegionRole =
+  | 'hero'
+  | 'promo'
+  | 'stats'
+  | 'categories'
+  | 'collection'
+  | 'products'
+  | 'reviews'
+  | 'membership'
+  | 'article'
+  | 'section'
+
+/** One card inside a region: a product, a category tile, a collection tile. Ids are `i1`, `i2`, ... in document order. */
+export interface PageItem {
+  id: string
+  /** The card's title, as shown. Untrusted website text. */
+  title: string
+  /** The price as written on the card (e.g. "$29.99"), when the card shows one. */
+  price?: string
+  /** The crossed-out price, when the card shows one. */
+  wasPrice?: string
+  /** One line of the card's own description. */
+  detail?: string
+  /** Absolute URL the card links to. */
+  href?: string
+  /** Segments that live inside this card. */
+  segmentIds: string[]
+}
+
+/** One top-level region of the page. Ids are `r1`, `r2`, ... in document order. */
+export interface PageRegion {
+  id: string
+  role: RegionRole
+  /** The region's heading, or its first text when it has none. Untrusted website text. */
+  title: string
+  /** Segments inside this region, in order (items' segments included). */
+  segmentIds: string[]
+  items?: PageItem[]
+}
 
 /** What the content script extracts from a page and sends to the background. */
 export interface PageContent {
@@ -264,6 +318,10 @@ export interface PageContent {
   source: 'readability' | 'agent-markdown' | 'raw'
   /** Editable text elements of the live page, in document order (src/tailor/segments.ts). Empty when none were found. */
   segments: PageSegment[]
+  /** Which site profile described this page (src/sites). Absent when only the generic profile applied. */
+  site?: { host: string; name: string; kind: SiteKind }
+  /** The page map: top-level regions with their role, title and items (src/sites/regions.ts). Absent when none were found. */
+  regions?: PageRegion[]
   /** Present only on pages that offer agent hooks (coframe.com). */
   agentHooks?: CoframeAgentHooks
   /** Language detected on the page (BCP 47), used to hold language constant in evals. */

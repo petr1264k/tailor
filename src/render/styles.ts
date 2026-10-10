@@ -45,37 +45,43 @@ export const PANEL_CSS = `
   button:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px solid var(--t-accent); outline-offset: 2px; }
   a { color: var(--t-accent); }
 
-  /* ── Floating bar: coframe's bottom-center "HUMAN / AGENT" pill ── */
-  .bar { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 2147483647; max-width: calc(100vw - 32px);
-         display: flex; align-items: center; gap: 6px; padding: 6px; font: 500 13.5px/1.2 var(--t-sans); color: var(--t-ink);
-         background: var(--t-card); border-radius: 999px;
-         box-shadow: 0 0 0 1px rgba(31,33,47,.08), 0 2px 6px rgba(31,33,47,.08), 0 12px 32px -8px rgba(31,33,47,.35); }
-  .bar::before { content: ''; display: block; width: 24px; height: 24px; margin-left: 4px; flex: none;
-                 background: url("data:image/svg+xml,${encodeURIComponent(markSvg(24))}") center / 24px 24px no-repeat; }
-  .bar button { padding: 9px 14px; border-radius: 999px; white-space: nowrap;
+  /* ── Floating bar: a small pill in the bottom-right corner (coframe's "HUMAN / AGENT" pill, scaled down).
+        Pages tailor on load, so the bar is on every page: at rest it is the mark, the Original ↔ Tailored toggle and
+        the scorecard chip. Hover or focus reveals Re-tailor and the gate line (the §9 "Trust" moment). ── */
+  .bar { position: fixed; right: 14px; bottom: 14px; z-index: 2147483647; max-width: calc(100vw - 28px);
+         display: flex; align-items: center; gap: 4px; padding: 3px; font: 500 12px/1.2 var(--t-sans); color: var(--t-ink);
+         background: var(--t-card); border-radius: 999px; opacity: .92;
+         box-shadow: 0 0 0 1px rgba(31,33,47,.08), 0 1px 3px rgba(31,33,47,.08), 0 8px 20px -8px rgba(31,33,47,.3); }
+  .bar:hover, .bar:focus-within { opacity: 1; }
+  .bar::before { content: ''; display: block; width: 16px; height: 16px; margin-left: 5px; flex: none;
+                 background: url("data:image/svg+xml,${encodeURIComponent(markSvg(16, undefined, { solid: true }))}") center / 16px 16px no-repeat; }
+  .bar button { padding: 5px 10px; border-radius: 999px; white-space: nowrap;
                 transition: background .15s var(--t-ease), color .15s var(--t-ease), box-shadow .15s var(--t-ease); }
   .bar button.primary { background: var(--t-ink); color: #fff; }
   .bar button.primary:hover:not(:disabled) { background: var(--t-ink-2); }
-  .bar button.primary::after { content: '→'; margin-left: 7px; font-weight: 400; }
+  .bar button.primary::after { content: '→'; margin-left: 5px; font-weight: 400; }
   .bar button.primary:disabled::after { content: none; }
+  /* Once a tailored view exists the toggle does the switching; Re-tailor and the gate counts wait behind hover/focus. */
+  .bar:not(:hover):not(:focus-within):has(.view:not([hidden])) .primary { display: none; }
+  .bar:not(:hover):not(:focus-within) .status.has-log { display: none; }
   .bar button.secondary { background: transparent; color: var(--t-ink); box-shadow: inset 0 0 0 1px var(--t-line); }
   .bar button.secondary:hover:not(:disabled) { background: var(--t-bg); box-shadow: inset 0 0 0 1px #b9c5ea; }
 
   /* The Original ↔ Tailored toggle is ONE button whose text is the view you switch to; CSS draws the other segment
      (the active one, with a dot) from data-mode on the bar, so it reads as a two-segment pill. */
-  .bar .view { display: inline-flex; align-items: center; gap: 2px; padding: 3px 12px 3px 3px; background: var(--t-bg-2);
+  .bar .view { display: inline-flex; align-items: center; gap: 2px; padding: 2px 8px 2px 2px; background: var(--t-bg-2);
                box-shadow: inset 0 0 0 1px var(--t-line-2); color: var(--t-muted);
-               font: 500 11px/1 var(--t-mono); letter-spacing: .08em; text-transform: uppercase; }
+               font: 500 9.5px/1 var(--t-mono); letter-spacing: .06em; text-transform: uppercase; }
   .bar .view:hover:not(:disabled) { color: var(--t-ink); background: var(--t-bg-2); box-shadow: inset 0 0 0 1px var(--t-line-2); }
-  .bar .view::before, .bar .view::after { display: none; padding: 7px 12px 7px 22px; border-radius: 999px; color: #fff;
-       background: radial-gradient(circle, #fff 2.5px, transparent 3px) 10px 50% / 8px 8px no-repeat, var(--t-ink); }
+  .bar .view::before, .bar .view::after { display: none; padding: 5px 8px 5px 16px; border-radius: 999px; color: #fff;
+       background: radial-gradient(circle, #fff 2px, transparent 2.5px) 7px 50% / 6px 6px no-repeat, var(--t-ink); }
   .bar[data-mode='original'] .view::before { content: 'Original'; display: inline-block; }
-  .bar[data-mode='tailored'] .view { padding: 3px 3px 3px 12px; }
-  .bar[data-mode='tailored'] .view::after { content: 'Tailored'; display: inline-block; margin-left: 10px; }
-  .bar[data-mode='original'] .view::before { margin-right: 10px; }
+  .bar[data-mode='tailored'] .view { padding: 2px 2px 2px 8px; }
+  .bar[data-mode='tailored'] .view::after { content: 'Tailored'; display: inline-block; margin-left: 6px; }
+  .bar[data-mode='original'] .view::before { margin-right: 6px; }
 
-  .bar .status { padding: 0 10px 0 6px; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-                 font: 500 11.5px/1.3 var(--t-mono); letter-spacing: .04em; text-transform: uppercase; color: var(--t-muted);
+  .bar .status { padding: 0 8px 0 4px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+                 font: 500 9.5px/1.3 var(--t-mono); letter-spacing: .04em; text-transform: uppercase; color: var(--t-muted);
                  background: none; border-radius: 0; cursor: default; }
   .bar .status:empty { display: none; }
   .bar .status.is-error { color: var(--t-danger); }
@@ -83,8 +89,8 @@ export const PANEL_CSS = `
   .bar .status.has-log:hover { color: var(--t-ink); }
 
   /* Fact-check popover above the bar (§9 "Trust") */
-  .gate-pop { position: fixed; left: 50%; bottom: 76px; transform: translateX(-50%); z-index: 2147483647;
-              width: min(500px, calc(100vw - 32px)); max-height: 50vh; overflow-y: auto; padding: 14px 16px;
+  .gate-pop { position: fixed; right: 14px; bottom: 50px; z-index: 2147483647;
+              width: min(500px, calc(100vw - 28px)); max-height: 50vh; overflow-y: auto; padding: 14px 16px;
               background: var(--t-ink); color: #fff; border-radius: 14px; font: 14.5px/1.45 var(--t-sans);
               box-shadow: var(--t-shadow-modal); }
   .gate-pop .gate-title { font: 500 11px/1.3 var(--t-mono); letter-spacing: .08em; text-transform: uppercase;
@@ -94,13 +100,13 @@ export const PANEL_CSS = `
   .gate-pop .claim { text-decoration: line-through; font-weight: 600; }
 
   /* Scorecard chip + popover: what changed for this person, measured by code on this page (§8.5) */
-  .bar .score { padding: 7px 10px; border-radius: 999px; max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-                font: 500 11px/1 var(--t-mono); letter-spacing: .04em; text-transform: uppercase; color: #0f7b4f;
+  .bar .score { padding: 5px 8px; border-radius: 999px; max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+                font: 500 9.5px/1 var(--t-mono); letter-spacing: .04em; text-transform: uppercase; color: #0f7b4f;
                 background: #f1fbf6; box-shadow: inset 0 0 0 1px #bfe3d2; cursor: pointer; }
   .bar .score:hover { box-shadow: inset 0 0 0 1px #0f7b4f; }
   .bar .score:empty { display: none; }
-  .score-pop { position: fixed; left: 50%; bottom: 76px; transform: translateX(-50%); z-index: 2147483647;
-               width: min(520px, calc(100vw - 32px)); max-height: 50vh; overflow-y: auto; padding: 14px 16px;
+  .score-pop { position: fixed; right: 14px; bottom: 50px; z-index: 2147483647;
+               width: min(520px, calc(100vw - 28px)); max-height: 50vh; overflow-y: auto; padding: 14px 16px;
                background: var(--t-ink); color: #fff; border-radius: 14px; font: 14px/1.45 var(--t-sans);
                box-shadow: var(--t-shadow-modal); }
   .score-pop .gate-title { font: 500 11px/1.3 var(--t-mono); letter-spacing: .08em; text-transform: uppercase;
@@ -235,13 +241,17 @@ export const PANEL_CSS = `
  *
  * Notes are STICKY NOTES: as if a person went over the page and stuck notes on it. Paper colour per kind (yellow =
  * for you, coral = heads up, mint = moved up, blue = the site's own words), a strip of tape at the top, a curled
- * bottom-right corner, and a slight lean that differs note to note (--tilt / --nudge are set per note in inplace.ts,
- * from the note's text, so a note keeps its lean across re-renders). Hover straightens and lifts the note. The paper
- * brings its own font and colours, so it reads as a note ON the page, not part of it, and stays legible on any site.
- * Fold stubs keep the site's font: they stand in for the site's own content.
+ * bottom-right corner, and a slight lean that differs note to note (--tilt is set per note in inplace.ts, from the
+ * note's text, so a note keeps its lean across re-renders). Hover straightens and lifts the note. The note host is
+ * absolutely positioned in <body> (left/top set by inplace.ts placePin) so it sits ON TOP of the element it is about,
+ * images and cards included, never pushing the page around. The paper brings its own font and colours, so it reads
+ * as a note on the page, not part of it, and stays legible on any site. Fold stubs stay in flow and keep the site's
+ * font: they stand in for the site's own content.
  */
 export const INPLACE_CSS = `
-  :host { display: block; position: relative; z-index: 2; margin: 16px 0 22px; max-width: 72ch; text-align: left; opacity: 1; transform: none; }
+  :host { display: block; position: absolute; left: 0; top: 0; z-index: 2147483000; width: max-content; max-width: calc(100vw - 16px);
+          margin: 0; padding: 0; text-align: left; opacity: 1; transform: none; pointer-events: auto; }
+  :host(tailor-fold) { position: static; width: auto; max-width: 72ch; margin: 14px 0; z-index: auto; }
   *, *::before, *::after { box-sizing: border-box; }
   :host([hidden]), [hidden] { display: none !important; }
   button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; padding: 0; margin: 0; }
@@ -249,7 +259,7 @@ export const INPLACE_CSS = `
 
   /* ── Sticky note. .sticky leans, casts the shadow (drop-shadow follows the curled corner) and holds the tape;
         .note is the paper. Each kind sets its own paper and ink. ── */
-  .sticky { position: relative; width: fit-content; min-width: min(100%, 240px); max-width: 100%; margin-left: var(--nudge, 0px); padding-top: 10px;
+  .sticky { position: relative; width: fit-content; min-width: 240px; max-width: 100%; padding-top: 10px;
             transform: rotate(var(--tilt, -1.5deg)); transform-origin: 50% 0;
             filter: drop-shadow(0 1px 1px rgba(31,33,47,.10)) drop-shadow(0 12px 14px rgba(31,33,47,.22));
             transition: transform .25s cubic-bezier(.4,0,.2,1), filter .25s cubic-bezier(.4,0,.2,1); }
@@ -261,13 +271,16 @@ export const INPLACE_CSS = `
           box-shadow: inset 0 0 0 1px rgba(255,255,255,.5), 0 1px 2px rgba(31,33,47,.14);
           clip-path: polygon(0 12%, 2% 0, 50% 3%, 98% 0, 100% 10%, 99% 55%, 100% 92%, 97% 100%, 50% 97%, 2% 100%, 0 88%, 1% 45%); }
 
-  .note { position: relative; max-width: 360px; /* px on purpose: a % here is cyclic inside the fit-content wrapper */
+  .note { position: relative; isolation: isolate; max-width: 360px; /* px on purpose: a % here is cyclic inside the fit-content wrapper */
           font-family: ${SANS}; font-size: 15.5px; line-height: 1.45; font-weight: 400; letter-spacing: normal; text-transform: none;
-          -webkit-font-smoothing: antialiased; color: var(--ink); padding: 22px 48px 22px 20px; border-radius: 1px;
-          --paper-0: #fffac8; --paper: #fff176; --paper-2: #f6dc48; --ink: #1f212f; --label: #2d2860;
-          background: linear-gradient(172deg, var(--paper-0) 0%, var(--paper) 42%, var(--paper-2) 100%);
-          clip-path: polygon(0 0, 100% 0, 100% calc(100% - 22px), calc(100% - 22px) 100%, 0 100%); }
-  .note::after { content: ''; position: absolute; right: 0; bottom: 0; width: 22px; height: 22px;
+          -webkit-font-smoothing: antialiased; color: var(--ink); padding: 22px 48px 22px 20px;
+          --paper-0: #fffac8; --paper: #fff176; --paper-2: #f6dc48; --ink: #1f212f; --label: #2d2860; }
+  /* The paper is a layer UNDER the content, not the note's own background: the clip-path that cuts the curled corner
+     would otherwise clip everything inside the note, including the quote slip a "why" opens below it. */
+  .note::before { content: ''; position: absolute; inset: 0; z-index: -1;
+                  background: linear-gradient(172deg, var(--paper-0) 0%, var(--paper) 42%, var(--paper-2) 100%);
+                  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 22px), calc(100% - 22px) 100%, 0 100%); }
+  .note::after { content: ''; position: absolute; right: 0; bottom: 0; width: 22px; height: 22px; z-index: -1;
                  background: linear-gradient(to top left, transparent 48%, rgba(31,33,47,.24) 50%, rgba(255,255,255,.65) 100%); }
   .note.is-warn { --paper-0: #ffe8dc; --paper: #ffc9ae; --paper-2: #ffb08a; --ink: #4a1d05; --label: #9a3d0d; }
   .note.is-move { --paper-0: #e4fcec; --paper: #bdf2d0; --paper-2: #9ce6b8; --ink: #0f3d2b; --label: #0f7b4f; }
@@ -293,7 +306,12 @@ export const INPLACE_CSS = `
   .why-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 `
 
-/** The inline "why" chip appended to a rewritten element (own shadow root). */
+/**
+ * The "why" chip (own shadow root). In site text (a rewritten heading, a card badge) it is a small bordered chip. On a
+ * sticky note (host has data-paper) it is written in the note's own ink, like "why?" jotted under the text, quiet at
+ * rest and solid on hover. The quote it opens is a paper slip in both cases: a smaller white note, leaning a touch
+ * its own way, that tucks out from under the sticky note. Never a dark box: in-page elements are paper.
+ */
 export const WHY_CSS = `
   :host { display: inline-block; vertical-align: middle; margin-left: .4em; position: relative; line-height: 1;
           font-size: 12px; letter-spacing: normal; text-transform: none; opacity: 1; transform: none; }
@@ -304,13 +322,24 @@ export const WHY_CSS = `
          font: 500 10.5px/1 ${MONO}; letter-spacing: .1em; text-transform: uppercase; }
   .why:hover { box-shadow: inset 0 0 0 1px #5a52ec; }
   .why[aria-expanded="true"] { background: #5a52ec; color: #fff; box-shadow: none; }
-  .why-pop { position: absolute; z-index: 2147483000; top: calc(100% + 6px); left: 0; width: max-content; max-width: 440px;
-             padding: 12px 14px; border-radius: 12px; background: #1f212f; color: #fff; text-align: left;
+  .why-pop { position: absolute; z-index: 2147483000; top: calc(100% + 8px); left: -4px; width: max-content; max-width: 380px;
+             padding: 11px 14px 12px; border-radius: 2px; background: #fffdf6; color: #1f212f; text-align: left;
              font: 400 14px/1.45 ${SANS}; letter-spacing: normal; text-transform: none; white-space: normal;
-             box-shadow: 0 24px 48px -12px rgba(31,33,47,.35); }
+             transform: rotate(1.2deg); transform-origin: 0 0;
+             box-shadow: 0 0 0 1px rgba(31,33,47,.07), 0 1px 1px rgba(31,33,47,.08), 0 12px 18px -8px rgba(31,33,47,.32); }
   :host(:hover) .why-pop[hidden] { display: block !important; }
-  .why-value { display: block; font-weight: 600; margin-bottom: 4px; }
-  .why-quote { display: block; color: #b1bac2; }
+  .why-value { display: block; font-weight: 600; margin-bottom: 3px; }
+  .why-quote { display: block; color: #6b7084; }
+
+  /* On a sticky note: pen ink in the note's label colour (--label inherits from the note), no box. */
+  :host([data-paper]) { margin-left: 0; }
+  :host([data-paper]) .why { padding: 0 0 2px; border-radius: 0; background: none; color: var(--label, #2d2860); box-shadow: none;
+                             border-bottom: 1px dotted currentColor; opacity: .7; letter-spacing: .12em; }
+  :host([data-paper]) .why:hover, :host([data-paper]) .why[aria-expanded="true"] { opacity: 1; border-bottom-style: solid;
+                             background: none; color: var(--label, #2d2860); box-shadow: none; }
+  /* The slip sits UNDER the paper (z-index below the note's ::before layer) and pokes out past its bottom edge. */
+  :host([data-paper]) .why-pop { z-index: -2; top: calc(100% + 12px); left: -6px; padding-top: 22px;
+                                 box-shadow: 0 0 0 1px rgba(31,33,47,.07); }
 `
 
 /** <tailor-badge>: an inline tag inside a card's title: "FOR YOU · 100W: enough for your MacBook" + why chips. */

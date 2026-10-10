@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Fact, PageEdit, PageSegment, TailoredPage } from '@/types'
 import { collectSegments, resolveSegment } from '@/tailor/segments'
 import { mountTailorButton, renderFromSite, renderTailored, showOriginal, showTailored, type RenderCallbacks, type TailorUi } from './index'
-import { foldTargets, markedElements } from './inplace'
-import { buildScorecard, countWords, measureSide, scorecardLine, scorecardRows } from './scorecard'
+import { foldTargets, markedElements, noteAnchor } from './inplace'
+import { buildScorecard, countWords, measureSide, scorecardChip, scorecardLine, scorecardRows } from './scorecard'
 
 const ps5: Fact = {
   id: 'f1',
@@ -122,7 +122,7 @@ describe('in-place edits', () => {
     expect(foldTargets(praise, all)).toEqual([document.getElementById('praise')])
   })
 
-  it('a note goes right after its anchor; a note on a list item goes after the list; ✕ reports ignore', () => {
+  it('a note is stuck on its anchor from the overlay; a note on a list item sticks to the list; ✕ reports ignore', () => {
     const { onInteraction } = setup()
     renderTailored(
       page([
@@ -135,13 +135,16 @@ describe('in-place edits', () => {
     )
     const notes = hosts('tailor-note')
     expect(notes).toHaveLength(2)
-    expect(document.getElementById('intro')!.nextElementSibling).toBe(notes[0])
-    expect(document.getElementById('list')!.nextElementSibling).toBe(notes[1])
+    expect(notes.map((n) => n.parentElement)).toEqual([document.body, document.body]) // overlay, not in the page's flow
+    expect(noteAnchor(notes[0]!)).toBe(document.getElementById('intro'))
+    expect(noteAnchor(notes[1]!)).toBe(document.getElementById('list'))
+    expect(document.getElementById('intro')!.nextElementSibling?.id).toBe('list') // the page's own order is untouched
     expect(inShadow(notes[0]!, '.kicker').textContent).toBe('For you')
     expect(inShadow(notes[0]!, '.text').textContent).toBe('Works with your PS5 at 120Hz.')
     expect(inShadow(notes[1]!, '.note').classList.contains('is-warn')).toBe(true)
     expect(inShadow(notes[1]!, '.kicker').textContent).toBe('Heads up')
     expect(inShadow(notes[0]!, 'tailor-why')).toBeTruthy()
+    expect(inShadow(notes[0]!, 'tailor-why').hasAttribute('data-paper')).toBe(true) // drawn in the note's ink, not as a chip
     inShadow<HTMLButtonElement>(notes[1]!, '.dismiss').click()
     expect(notes[1]!.hidden).toBe(true)
     // The host has its own display rule, so the shadow stylesheet must hide the host itself, not just its children.
@@ -149,7 +152,7 @@ describe('in-place edits', () => {
     expect(onInteraction).toHaveBeenLastCalledWith({ kind: 'ignore', blockType: 'warning', factIds: ['f1'] })
   })
 
-  it('a note anchored inside a hidden part lands after the stub, not inside the hidden section', () => {
+  it('a note anchored inside a hidden part sticks to the stub, not to the hidden section', () => {
     setup()
     renderTailored(
       page([
@@ -162,7 +165,7 @@ describe('in-place edits', () => {
     )
     const stub = hosts('tailor-fold')[0]!
     const note = hosts('tailor-note')[0]!
-    expect(stub.nextElementSibling).toBe(note)
+    expect(noteAnchor(note)).toBe(stub)
     expect(document.getElementById('praise')!.contains(note)).toBe(false)
   })
 
@@ -233,14 +236,14 @@ describe('in-place edits', () => {
     expect(inShadow(notes[0]!, '.text').textContent).toBe('Two.')
   })
 
-  it('the site reply is inserted under the headline as plain text with numbers marked as claims', () => {
+  it('the site reply is stuck on the headline as plain text with numbers marked as claims', () => {
     setup()
     renderTailored(page([{ op: 'rewrite', id: byText('Maximize'), text: 'New.' }]), [], ui!, target())
     const evil = 'Thanks! <img src=x onerror=alert(1)> We can go live in 2 weeks for $1,299.'
     renderFromSite(ui!, evil, 'https://www.coframe.com/_cf/agent-request')
     expect(document.querySelectorAll('img:not([alt=""])')).toHaveLength(0)
     const host = hosts('tailor-note')[0]!
-    expect(document.querySelector('h1')!.nextElementSibling).toBe(host)
+    expect(noteAnchor(host)).toBe(document.querySelector('h1'))
     expect(host.dataset['blockType']).toBe('from_site')
     expect(inShadow(host, '.kicker').textContent).toBe("From coframe.com · the site's own words")
     expect(inShadow(host, '.text').textContent).toBe(evil)
@@ -320,10 +323,9 @@ describe('in place: page map edits (promote, badge, region hide) and the scoreca
       ui,
       mapTarget(),
     )
-    expect(wrapOrder().filter((x) => x !== 'tailor-note')).toEqual(['hero', 'shelf', 'stats', 'member'])
-    const strip = document.querySelector('.wrap > tailor-note') as HTMLElement
-    expect(strip).not.toBeNull()
-    expect(strip.nextElementSibling?.id).toBe('shelf')
+    expect(wrapOrder()).toEqual(['hero', 'shelf', 'stats', 'member']) // the strip is in the overlay, not in the wrap
+    const strip = hosts('tailor-note')[0]!
+    expect(noteAnchor(strip)?.id).toBe('shelf')
     expect(strip.shadowRoot!.querySelector('.kicker')!.textContent).toBe('Moved up for you')
     expect(strip.shadowRoot!.querySelector('.text')!.textContent).toBe('Power banks for your trips come first.')
     expect(order('list')).toEqual(['c2', 'c1', 'c3'])
@@ -337,7 +339,7 @@ describe('in place: page map edits (promote, badge, region hide) and the scoreca
     expect(document.querySelector('tailor-note, tailor-badge')).toBeNull()
 
     showTailored(ui)
-    expect(wrapOrder().filter((x) => x !== 'tailor-note')).toEqual(['hero', 'shelf', 'stats', 'member'])
+    expect(wrapOrder()).toEqual(['hero', 'shelf', 'stats', 'member'])
     expect(order('list')).toEqual(['c2', 'c1', 'c3'])
   })
 
@@ -417,6 +419,7 @@ describe('scorecard', () => {
     )
     expect(card).toMatchObject({ marked: 3, promoted: 1, badges: 1, hidden: 1, notes: 0, warnings: 0, rewrites: 0 })
     expect(scorecardLine(card)).toBe('1st match 3.6 screens down → first screen · words 2,870 → 1,140')
+    expect(scorecardChip(card)).toBe('3.6 → 0.5 screens · 2,870 → 1,140 words')
     expect(scorecardRows(card)).toEqual([
       ['First thing marked for you', '3.6 screens down → first screen (3,240 px → 420 px)'],
       ['Marked for you on the first screen', '0 → 2 of 3'],
@@ -425,6 +428,7 @@ describe('scorecard', () => {
     ])
     const none = buildScorecard(page([]), { ...before, firstMatchTop: null, firstMatchScreens: null }, { ...after, firstMatchTop: null, firstMatchScreens: null }, 0, 900)
     expect(scorecardLine(none)).toBe('words 2,870 → 1,140')
+    expect(scorecardChip(none)).toBe('2,870 → 1,140 words')
   })
 
   it('measureSide reads positions and visible words from the live page', () => {

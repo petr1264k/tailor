@@ -97,11 +97,20 @@ function screensLabel(side: ScorecardSide): string {
   return `${side.firstMatchScreens} screens down`
 }
 
-/** One line for the bar: "1st match 3.6 screens down → first screen · words 2,870 → 1,140". */
+/** One line for the bar's title and the popover head: "1st match 3.6 screens down → first screen · words 2,870 → 1,140". */
 export function scorecardLine(card: Scorecard): string {
   const parts: string[] = []
   if (card.marked > 0) parts.push(`1st match ${screensLabel(card.before)} → ${screensLabel(card.after)}`)
   parts.push(`words ${fmt(card.before.words)} → ${fmt(card.after.words)}`)
+  return parts.join(' · ')
+}
+
+/** The chip itself, short enough for the small bar: "3.6 → 0.5 screens · 2,870 → 1,140 words". Same numbers, fewer words. */
+export function scorecardChip(card: Scorecard): string {
+  const screens = (side: ScorecardSide): string => (side.firstMatchScreens === null ? 'none' : String(side.firstMatchScreens))
+  const parts: string[] = []
+  if (card.marked > 0) parts.push(`${screens(card.before)} → ${screens(card.after)} screens`)
+  parts.push(`${fmt(card.before.words)} → ${fmt(card.after.words)} words`)
   return parts.join(' · ')
 }
 

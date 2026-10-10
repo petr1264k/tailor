@@ -21,7 +21,7 @@ import type { Fact, Interaction, StrippedClaim, TailoredPage } from '@/types'
 import type { SharePreview } from '@/messages'
 import { type BlockContext, displayHost, el, evidenceLine, renderBlock } from './blocks'
 import { PANEL_CSS } from './styles'
-import { type Scorecard, scorecardLine, scorecardRows } from './scorecard'
+import { type Scorecard, scorecardChip, scorecardLine, scorecardRows } from './scorecard'
 import {
   appendFromSiteInPlace,
   applyInPlace,
@@ -36,7 +36,7 @@ import {
 export { PANEL_CSS, INPLACE_CSS, WHY_CSS, BADGE_CSS } from './styles'
 export { applyInPlace, foldTargets, hasInPlace, inPlaceShown, markedElements, whyChip } from './inplace'
 export type { InPlaceTarget, ResolveSegment, ResolveRegion } from './inplace'
-export { buildScorecard, countEdits, countWords, measureSide, scorecardLine, scorecardRows } from './scorecard'
+export { buildScorecard, countEdits, countWords, measureSide, scorecardChip, scorecardLine, scorecardRows } from './scorecard'
 export type { Scorecard, ScorecardSide } from './scorecard'
 export {
   COLLAPSE_AT,
@@ -166,10 +166,9 @@ export function mountTailorButton(callbacks: RenderCallbacks): TailorUi {
         scorePop.replaceChildren()
         return
       }
-      const line = scorecardLine(card)
       score.hidden = false
-      score.textContent = line
-      score.title = line
+      score.textContent = scorecardChip(card) // the short form fits the small bar; the full line is the tooltip
+      score.title = scorecardLine(card)
       renderScorePop(scorePop, card)
     },
     destroy() {

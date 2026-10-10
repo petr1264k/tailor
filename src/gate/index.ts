@@ -15,6 +15,8 @@ import { containsToken, normalizeForMatch, normalizeHref } from './normalize'
 export type { Claim, LocatedClaim } from './claims'
 export { extractClaims, findClaims } from './claims'
 export { normalizeForMatch, normalizeHref } from './normalize'
+export { runEditGate, EDIT_BLOCK_TYPE, MAX_REWRITE_GROWTH, MAX_REWRITE_EXTRA_CHARS } from './edits'
+export type { EditGateInput, EditGateOutput } from './edits'
 
 export interface GateInput {
   blocks: Block[]
@@ -76,7 +78,7 @@ function sentenceSpans(scan: string): Array<[number, number]> {
 }
 
 /** Removes every sentence that overlaps a bad claim. Unchanged string if none; null if nothing meaningful is left. */
-function stripSentences(text: string, bad: Set<string>): string | null {
+export function stripSentences(text: string, bad: Set<string>): string | null {
   const hits = findClaims(text).filter((c) => bad.has(claimKey(c)))
   if (hits.length === 0) return text
   let out = ''

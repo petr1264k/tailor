@@ -9,18 +9,32 @@
  * (the bar, the panel, Original ↔ Tailored, dwell, the consent sheet, the site's reply).
  * Text enters the DOM only via textContent. NEVER innerHTML anywhere in src/render.
  *
- * Layout choice: the tailored view is a fixed, scrollable column (max-width 720px) centered over a dimmed backdrop
- * that covers the page, NOT a rewrite of the site's DOM. Why: (1) we never touch the site's DOM or styles (CLAUDE.md);
- * (2) the original page stays intact underneath, so Original ↔ Tailored is instant (hide/show, no re-render);
- * (3) one layout works on every site whatever its markup; (4) the fidelity gate checks the visible original page,
- * which this keeps exactly as the site rendered it (§3.6).
+ * Two views:
+ *  - IN PLACE (the product, §3.7): when the page has edits, inplace.ts applies them to the site's own DOM. Headings and
+ *    paragraphs are rewritten where they stand, fluff folds where it stood, notes slot in next to what they are about.
+ *    The site keeps its look. Original ↔ Tailored puts the original nodes back.
+ *  - PANEL (fallback): pages with no editable text elements (or a cached page without edits) get the block panel:
+ *    a fixed column over a dimmed backdrop, rendered from `page.blocks`.
+ * The gate checks the visible ORIGINAL page in both cases; extraction happens before anything is changed (§3.6).
  */
-import type { Fact, Interaction, TailoredPage } from '@/types'
+import type { Fact, Interaction, StrippedClaim, TailoredPage } from '@/types'
 import type { SharePreview } from '@/messages'
 import { type BlockContext, displayHost, el, evidenceLine, renderBlock } from './blocks'
 import { PANEL_CSS } from './styles'
+import {
+  appendFromSiteInPlace,
+  applyInPlace,
+  hasInPlace,
+  hideInPlace,
+  inPlaceShown,
+  showInPlace,
+  teardownInPlace,
+  type InPlaceTarget,
+} from './inplace'
 
-export { PANEL_CSS } from './styles'
+export { PANEL_CSS, INPLACE_CSS, WHY_CSS } from './styles'
+export { applyInPlace, foldTargets, hasInPlace, inPlaceShown, whyChip } from './inplace'
+export type { InPlaceTarget, ResolveSegment } from './inplace'
 export {
   COLLAPSE_AT,
   blockFactIds,
@@ -56,10 +70,21 @@ export interface TailorUi {
   /** The callbacks given to mountTailorButton; the panel reports interactions through them. */
   callbacks: RenderCallbacks
   setMode(mode: UiMode): void
-  setGateSummary(checked: number, stripped: number): void
+  /** "checked N · stripped M" in the bar; with `log`, clicking it opens the list of stripped claims (§9 "Trust"). */
+  setGateSummary(checked: number, stripped: number, log?: StrippedClaim[]): void
   /** Shows an error (or any short status) in the bar. Never pass message text here. */
   setStatus(text: string, isError?: boolean): void
   destroy(): void
+}
+
+/** Is there anything (panel or in-place edits) to toggle back to? */
+function hasView(root: ShadowRoot): boolean {
+  return panels.has(root) || hasInPlace(root)
+}
+
+/** Is a tailored view on screen right now? */
+function viewShown(root: ShadowRoot): boolean {
+  return inPlaceShown(root) || panels.get(root)?.overlay.hidden === false
 }
 
 const HOST_ID = 'tailor-ext-host'
@@ -86,10 +111,13 @@ export function mountTailorButton(callbacks: RenderCallbacks): TailorUi {
   const share = el('button', 'secondary', 'Share')
   share.type = 'button'
   share.hidden = true
-  const status = el('span', 'status')
+  const status = el('button', 'status')
+  status.type = 'button'
   status.setAttribute('aria-live', 'polite')
+  const gatePop = el('div', 'gate-pop')
+  gatePop.hidden = true
   bar.append(button, toggle, share, status)
-  root.append(style, bar)
+  root.append(style, bar, gatePop)
   document.documentElement.append(host)
 
   let mode: UiMode = 'original'
@@ -100,32 +128,40 @@ export function mountTailorButton(callbacks: RenderCallbacks): TailorUi {
     callbacks,
     setMode(next) {
       mode = next
-      const hasPanel = panels.has(root)
+      const has = hasView(root)
       button.disabled = next === 'loading'
       button.textContent = next === 'loading' ? 'Tailoring…' : next === 'tailored' ? 'Re-tailor' : 'Tailor'
-      toggle.hidden = !hasPanel || next === 'loading'
+      toggle.hidden = !has || next === 'loading'
       toggle.textContent = next === 'tailored' ? 'Original' : 'Tailored'
-      share.hidden = !callbacks.onShare || !hasPanel || next !== 'tailored'
+      share.hidden = !callbacks.onShare || !has || next !== 'tailored'
     },
-    setGateSummary(checked, stripped) {
+    setGateSummary(checked, stripped, log) {
       ui.setStatus(`checked ${checked} · stripped ${stripped}`)
+      renderGatePop(gatePop, checked, log)
+      status.classList.toggle('has-log', !!log)
+      if (!log) gatePop.hidden = true
     },
     setStatus(text, isError = false) {
       status.textContent = text
       status.classList.toggle('is-error', isError)
+      if (!status.classList.contains('has-log')) gatePop.hidden = true
     },
     destroy() {
+      teardownInPlace(ui)
       teardownPanel(ui)
       host.remove()
     },
   }
+  status.addEventListener('click', () => {
+    if (status.classList.contains('has-log')) gatePop.hidden = !gatePop.hidden
+  })
 
   const showError = (err: unknown): void => ui.setStatus(err instanceof Error ? err.message : String(err), true)
 
   button.addEventListener('click', () => {
     ui.setMode('loading')
-    // Mode follows what is actually on screen, so a failed Re-tailor over a visible panel stays 'tailored'.
-    const settle = (): void => ui.setMode(panels.get(root)?.overlay.hidden === false ? 'tailored' : 'original')
+    // Mode follows what is actually on screen, so a failed Re-tailor over a visible view stays 'tailored'.
+    const settle = (): void => ui.setMode(viewShown(root) ? 'tailored' : 'original')
     callbacks.onTailor().then(settle, (err: unknown) => {
       settle()
       showError(err)
@@ -250,6 +286,21 @@ const STRIP_REASONS: Record<string, string> = {
   invalid_block: 'invalid block',
 }
 
+/** The bar's fact-check popover: every stripped claim, struck through, with where it was and why (§9 "Trust"). */
+function renderGatePop(pop: HTMLElement, checked: number, log: StrippedClaim[] | undefined): void {
+  pop.replaceChildren()
+  if (!log) return
+  pop.append(el('div', 'gate-title', `Fact check: ${checked} claims checked against this page · ${log.length} stripped`))
+  const items = el('ul')
+  for (const s of log) {
+    const li = el('li')
+    li.append(el('span', 'claim', s.claim), document.createTextNode(` (${s.blockType}, ${STRIP_REASONS[s.reason] ?? s.reason})`))
+    items.append(li)
+  }
+  if (log.length === 0) items.append(el('li', undefined, 'Nothing stripped: every claim was found on the page.'))
+  pop.append(items)
+}
+
 function renderGateLog(state: PanelState, gate: TailoredPage['gate']): void {
   const summary = el('summary', undefined, `Fact check: ${gate.checked} claims checked against this page · ${gate.stripped.length} stripped`)
   const items = el('ul')
@@ -262,8 +313,23 @@ function renderGateLog(state: PanelState, gate: TailoredPage['gate']): void {
   state.gateLog.replaceChildren(summary, items)
 }
 
-/** Blocks → DOM inside the shadow root, covering the page's main content. "Why" chips show evidence from `facts`. */
-export function renderTailored(page: TailoredPage, facts: Fact[], ui: TailorUi): void {
+/**
+ * Shows a tailored page. With `page.edits` and an in-place target, the edits are applied to the site's own DOM (§3.7)
+ * and any panel is dropped. Otherwise the blocks render in the panel. "Why" chips show evidence from `facts`.
+ */
+export function renderTailored(page: TailoredPage, facts: Fact[], ui: TailorUi, target?: InPlaceTarget): void {
+  if (page.edits && target) {
+    const panel = panels.get(ui.root)
+    if (panel) {
+      panel.overlay.hidden = true
+      teardownPanel(ui)
+      panel.overlay.remove()
+    }
+    applyInPlace(page, facts, ui, target)
+    ui.setMode('tailored')
+    return
+  }
+  teardownInPlace(ui)
   const state = ensurePanel(ui)
   state.facts = new Map(facts.map((f) => [f.id, f]))
   state.meta.textContent = displayHost(page.url)
@@ -275,8 +341,9 @@ export function renderTailored(page: TailoredPage, facts: Fact[], ui: TailorUi):
   showTailored(ui)
 }
 
-/** Hides the panel (DOM kept, so the toggle is instant), reports dwell, sets the bar to Original. */
+/** Puts the original back (in-place edits undone, or the panel hidden; both remembered), reports dwell, bar → Original. */
 export function showOriginal(ui: TailorUi): void {
+  hideInPlace(ui)
   const state = panels.get(ui.root)
   if (state) {
     state.overlay.hidden = true
@@ -285,8 +352,13 @@ export function showOriginal(ui: TailorUi): void {
   ui.setMode('original')
 }
 
-/** Shows the last rendered panel again and restarts the dwell timer. No-op before anything was rendered. */
+/** Shows the last tailored view again (in-place edits re-applied, or the panel) and restarts dwell. No-op before any render. */
 export function showTailored(ui: TailorUi): void {
+  if (hasInPlace(ui.root)) {
+    showInPlace(ui)
+    ui.setMode('tailored')
+    return
+  }
   const state = panels.get(ui.root)
   if (!state) return
   state.overlay.hidden = false
@@ -379,8 +451,17 @@ export function renderConsentSheet(ui: TailorUi, preview: SharePreview): Promise
 
 // ───────────────────────────── the site's reply (§4 step 5) ─────────────────────────────
 
-/** "From coframe.com · the site's own words" block, plain text only, appended to the panel via the same renderer. */
+/**
+ * "From coframe.com · the site's own words", plain text only. In place: inserted into the page under the headline.
+ * Panel: appended as a from_site block via the same renderer.
+ */
 export function renderFromSite(ui: TailorUi, text: string, siteUrl: string): void {
+  if (hasInPlace(ui.root)) {
+    const host = appendFromSiteInPlace(ui, text, siteUrl)
+    ui.setMode('tailored')
+    host?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' })
+    return
+  }
   const state = ensurePanel(ui)
   const node = appendBlock(state, { type: 'from_site', text, siteUrl }, blockContext(ui, state))
   showTailored(ui)

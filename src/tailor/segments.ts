@@ -23,10 +23,15 @@ const SKIP_SELECTOR =
   '[aria-hidden="true"], script, style, noscript, template, svg, math, pre, code, kbd, samp, textarea, select, option, ' +
   'button, label, [contenteditable="true"], tailor-ext, tailor-note, tailor-fold, tailor-why'
 
-/** A <div> with any of these as a child is a container, not a text leaf. */
-const BLOCK_CHILD_SELECTOR =
-  ':scope > :is(address, article, aside, blockquote, details, dialog, div, dl, fieldset, figure, footer, form, ' +
+/** Elements that start a new line in rendered text. A <div> with any of these as a child is a container, not a text leaf. */
+const BLOCK_TAGS_SELECTOR =
+  ':is(address, article, aside, blockquote, details, dialog, div, dl, fieldset, figure, footer, form, ' +
   'h1, h2, h3, h4, h5, h6, header, hr, main, menu, nav, ol, p, pre, section, table, ul, video, iframe, canvas)'
+const BLOCK_CHILD_SELECTOR = `:scope > ${BLOCK_TAGS_SELECTOR}`
+
+// Node type constants by value: the eval harness runs this in Node, where the `Node` global does not exist.
+const TEXT_NODE = 3
+const ELEMENT_NODE = 1
 
 export const MIN_HEADING_CHARS = 2
 export const MIN_TEXT_CHARS = 8
@@ -64,7 +69,7 @@ export function isVisible(el: Element): boolean {
  * Falls back to the full text when everything inside is aria-hidden (icon-font style sites).
  */
 export function segmentText(el: Element): string {
-  const seen = collectText(el, true)
+  const seen = collectText(el, true).trim()
   const text = seen || collectText(el, false)
   return text.replace(/\s+/g, ' ').trim().slice(0, MAX_SEGMENT_CHARS)
 }
@@ -72,18 +77,18 @@ export function segmentText(el: Element): string {
 function collectText(el: Element, skipAriaHidden: boolean): string {
   let out = ''
   const walk = (node: Node): void => {
-    if (node.nodeType === Node.TEXT_NODE) {
+    if (node.nodeType === TEXT_NODE) {
       out += node.nodeValue ?? ''
       return
     }
-    if (node.nodeType !== Node.ELEMENT_NODE) return
+    if (node.nodeType !== ELEMENT_NODE) return
     const e = node as Element
     const tag = e.tagName.toLowerCase()
     if (tag === 'script' || tag === 'style' || tag === 'noscript' || tag === 'template' || tag.startsWith('tailor-')) return
     if (skipAriaHidden && e.getAttribute('aria-hidden') === 'true') return
     if (tag === 'br') out += ' '
     for (const child of Array.from(e.childNodes)) walk(child)
-    if (e.matches(BLOCK_CHILD_SELECTOR.replace(':scope > ', ''))) out += ' '
+    if (e.matches(BLOCK_TAGS_SELECTOR)) out += ' '
   }
   walk(el)
   return out

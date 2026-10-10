@@ -10,7 +10,7 @@
 import type { ContentCommand, ContentStatus } from '@/messages'
 import { send } from '@/messages'
 import type { Fact, Interaction, PageContent, TailoredPage } from '@/types'
-import { extractPageContent } from '@/tailor/extract'
+import { extractPage, resolveSegment, type ExtractedPage } from '@/tailor/extract'
 import { readAgentHooks, shareEndpoint } from '@/share/hooks'
 import { toFromSiteBlock } from '@/share/block'
 import { DEMO_FALLBACK_REPLY } from '@/share/fallback'
@@ -24,7 +24,7 @@ import {
 } from '@/render'
 
 let current: TailoredPage | null = null
-let pageContent: PageContent | null = null
+let extracted: ExtractedPage | null = null
 let mode: ContentStatus['mode'] = 'original'
 
 /** Deleted facts never reach a page (§3.4). Inlined so this bundle does not import '@/profile'. */
@@ -48,10 +48,18 @@ function boot(): void {
   /** Sharing is built only for coframe.com (§3.9): offered only when the page names an allowed endpoint. */
   const canShare = shareEndpoint(hooks) !== ''
 
-  /** Extracted once, while the original page is shown; re-tailoring reuses it. */
+  /** Extracted once, while the original page is shown; re-tailoring reuses it. Elements stay here, never sent. */
+  function getExtracted(): ExtractedPage {
+    if (!extracted) extracted = extractPage(document, url)
+    return extracted
+  }
   function getContent(): PageContent {
-    if (!pageContent) pageContent = extractPageContent(document, url)
-    return pageContent
+    return getExtracted().content
+  }
+  /** Where each edit lands: the remembered element, or the same text re-found if the site re-rendered (§3.7). */
+  function inPlaceTarget() {
+    const { content, elements } = getExtracted()
+    return { segments: content.segments, resolve: (seg: PageContent['segments'][number]) => resolveSegment(document, seg, elements.get(seg.id)) }
   }
 
   async function tailorNow(ui: TailorUi, force: boolean): Promise<void> {
@@ -62,8 +70,8 @@ function boot(): void {
       const page = current && !force ? current : await send('tailor/run', { content, force })
       current = page
       const profile = await send('profile/get', {})
-      renderTailored(page, liveFacts(profile.facts), ui)
-      ui.setGateSummary(page.gate.checked, page.gate.stripped.length)
+      renderTailored(page, liveFacts(profile.facts), ui, inPlaceTarget())
+      ui.setGateSummary(page.gate.checked, page.gate.stripped.length, page.gate.stripped)
       mode = 'tailored'
     } catch (err) {
       mode = previous === 'loading' ? 'original' : previous

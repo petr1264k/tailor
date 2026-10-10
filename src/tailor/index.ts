@@ -13,16 +13,22 @@ import type { Settings } from '@/settings'
 import { getSettings } from '@/settings'
 import { getProfile } from '@/profile'
 import { bestLayout, rememberLayout } from '@/learn'
-import { runFidelityGate } from '@/gate'
+import { runEditGate, runFidelityGate } from '@/gate'
 import { selectRelevantFacts } from './relevance'
 import { rewritePage } from './rewrite'
+import { editsToBlocks, proposeEdits } from './edit'
 import { cacheKey, getCachedTailoredPage, setCachedTailoredPage } from './cache'
 
-export { extractPageContent } from './extract'
+export { extractPageContent, extractPage, collectSegments, resolveSegment, segmentText } from './extract'
+export type { ExtractedPage, SegmentedPage } from './extract'
 export { selectRelevantFacts, scoreFact, tokenize } from './relevance'
 export { rewritePage, buildRewriteUserPrompt, checkBlocks, chooseLanguage, REWRITE_SYSTEM, LAYOUT_HINTS } from './rewrite'
 export type { RewriteOptions } from './rewrite'
+export { proposeEdits, buildEditUserPrompt, checkEdits, editsToBlocks, promptSegments, EDIT_SYSTEM } from './edit'
 export { getCachedTailoredPage, setCachedTailoredPage, cacheKey, stripHash } from './cache'
+
+/** Pages with fewer visible text elements than this get the panel fallback (blocks) instead of in-place edits. */
+export const MIN_SEGMENTS_FOR_EDITS = 3
 
 export const AGENT_MARKDOWN_TIMEOUT_MS = 3_000
 export const MAX_AGENT_MARKDOWN_CHARS = 60_000
@@ -82,7 +88,10 @@ export function userFactValues(facts: Fact[]): string[] {
   return facts.flatMap((f) => [f.value, ...f.evidence.map((e) => e.quote)])
 }
 
-/** select → rewrite → gate → cache. Returns a TailoredPage whose blocks have already passed the gate. */
+/**
+ * select → edit (or rewrite) → gate → cache. Returns a TailoredPage that has already passed the gate.
+ * In-place edits (§3.7) when the page has text elements to edit; the block panel is the fallback for pages without.
+ */
 export async function tailorPage(content: PageContent, profile: Profile, settings: Settings): Promise<TailoredPage> {
   // Extract from the agent version when offered; the gate still checks the VISIBLE page (§3.6).
   let working = content
@@ -97,21 +106,26 @@ export async function tailorPage(content: PageContent, profile: Profile, setting
   // layout, so the demo's "next product shows specs first" is deterministic. learn.sampleLayout is the exploring option.
   const layout = bestLayout(profile)
   rememberLayout(content.url, layout) // dwell / toggle_original then reward or penalize what was actually shown
-  const blocks = await rewritePage(working, facts, {
-    language: settings.language || undefined,
-    readingLevel: settings.readingLevel,
-    layout,
-  })
+  const options = { language: settings.language || undefined, readingLevel: settings.readingLevel, layout }
+  const segments = content.segments ?? []
 
-  // Fail closed: a gate error fails the run; ungated blocks never reach the page.
-  const gated = runFidelityGate({
-    blocks,
-    visibleText: content.visibleText,
-    links: content.links,
-    userFactValues: userFactValues(facts),
-  })
-
-  const page: TailoredPage = { url: content.url, profileVersion: profile.version, blocks: gated.blocks, gate: gated.gate }
+  let page: TailoredPage
+  if (segments.length >= MIN_SEGMENTS_FOR_EDITS) {
+    const proposed = await proposeEdits(working, facts, options)
+    // Fail closed: a gate error fails the run; ungated edits never reach the page.
+    const gated = runEditGate({ edits: proposed, segments, visibleText: content.visibleText, userFactValues: userFactValues(facts) })
+    page = {
+      url: content.url,
+      profileVersion: profile.version,
+      blocks: editsToBlocks(gated.edits, segments),
+      gate: gated.gate,
+      edits: gated.edits,
+    }
+  } else {
+    const blocks = await rewritePage(working, facts, options)
+    const gated = runFidelityGate({ blocks, visibleText: content.visibleText, links: content.links, userFactValues: userFactValues(facts) })
+    page = { url: content.url, profileVersion: profile.version, blocks: gated.blocks, gate: gated.gate }
+  }
   try {
     await setCachedTailoredPage(page, settings.activeProfileId)
   } catch (err) {

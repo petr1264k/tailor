@@ -35,9 +35,17 @@ export const PANEL_CSS = `
   .bar button { padding: 8px 14px; border-radius: 999px; background: #fff; color: #111318; }
   .bar button.secondary { background: transparent; color: #fff; box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.65); }
   .bar .status { padding: 0 8px; font-weight: 500; opacity: .85; max-width: 320px; overflow: hidden;
-                 text-overflow: ellipsis; white-space: nowrap; }
+                 text-overflow: ellipsis; white-space: nowrap; color: #fff; background: none; border-radius: 0; }
   .bar .status:empty { display: none; }
   .bar .status.is-error { color: #fca5a5; opacity: 1; }
+  .bar .status.has-log { text-decoration: underline dotted; text-underline-offset: 3px; cursor: pointer; }
+  .gate-pop { position: fixed; right: 16px; bottom: 72px; z-index: 2147483647; width: min(440px, calc(100vw - 32px));
+              max-height: 50vh; overflow-y: auto; background: #111318; color: #fff; border-radius: 12px; padding: 12px 14px;
+              font: 14px/1.45 var(--t-font); box-shadow: 0 12px 36px rgba(0,0,0,.35); }
+  .gate-pop .gate-title { font-weight: 700; margin-bottom: 6px; }
+  .gate-pop ul { margin: 0; padding-left: 1.2em; }
+  .gate-pop li + li { margin-top: 4px; }
+  .gate-pop .claim { text-decoration: line-through; font-weight: 600; }
 
   /* ── Tailored panel: fixed column over a dimmed backdrop ── */
   .overlay { position: fixed; inset: 0; z-index: 2147483646; background: rgba(17,19,24,.55);
@@ -134,4 +142,59 @@ export const PANEL_CSS = `
   .sheet-actions button { padding: 10px 18px; border-radius: 10px; font-weight: 700; }
   .sheet-actions .primary { background: var(--t-accent); color: #fff; }
   .sheet-actions .secondary { box-shadow: inset 0 0 0 1.5px var(--t-border); }
+`
+
+/**
+ * Styles for the elements we insert INTO the page (each has its own shadow root, so nothing here reaches the site):
+ * notes, fold stubs and "why" chips. They inherit the site's font family (no `all: initial`) so they read as part of
+ * the page, but fix their own colors and background so they stay legible on any section, dark or light.
+ */
+export const INPLACE_CSS = `
+  :host { display: block; margin: 14px 0; max-width: 72ch; text-align: left; opacity: 1; transform: none; }
+  *, *::before, *::after { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; padding: 0; margin: 0; }
+  button:focus-visible { outline: 3px solid #2563eb; outline-offset: 2px; }
+
+  .note { position: relative; font-family: inherit; font-size: clamp(14px, 1rem, 18px); line-height: 1.5; font-weight: 400;
+          letter-spacing: normal; color: #0b0d12; background: #fff; border-radius: 12px; padding: 14px 52px 14px 18px;
+          border-left: 5px solid #3730a3; box-shadow: 0 6px 24px rgba(0,0,0,.14); }
+  .note.is-warn { border-left-color: #d97706; background: #fff4dc; color: #7c2d12; }
+  .note.is-site { border-left: 0; border: 2px dashed #0f5e57; background: #effaf8; color: #0b0d12; padding-right: 18px; }
+  .kicker { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #3730a3; margin-bottom: 4px; }
+  .is-warn .kicker { color: #7c2d12; }
+  .is-site .kicker { color: #0f5e57; text-transform: none; letter-spacing: 0; font-size: 13px; }
+  .text { margin: 0; white-space: pre-line; overflow-wrap: anywhere; }
+  .dismiss { position: absolute; top: 8px; right: 8px; width: 32px; height: 32px; border-radius: 999px; font-size: 16px;
+             line-height: 32px; text-align: center; color: #3f4552; }
+  .dismiss:hover { background: rgba(0,0,0,.07); }
+  .site-claim { text-decoration: underline dotted; text-underline-offset: 3px; font-weight: 600; cursor: help; }
+
+  .fold { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-family: inherit;
+          font-size: 13px; line-height: 1.4; font-weight: 500; color: #3f4552; background: #f3f4f7;
+          border: 1px dashed #c9cdd6; border-radius: 8px; padding: 6px 12px; }
+  .fold .label { overflow-wrap: anywhere; }
+  .fold .label b { color: #0b0d12; font-weight: 700; }
+  .fold .toggle { font-weight: 700; color: #3730a3; text-decoration: underline; text-underline-offset: 3px; white-space: nowrap; }
+
+  .why-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+`
+
+/** The inline "why" chip appended to a rewritten element (own shadow root). */
+export const WHY_CSS = `
+  :host { display: inline-block; vertical-align: middle; margin-left: .4em; position: relative; line-height: 1;
+          font-size: 12px; letter-spacing: normal; text-transform: none; opacity: 1; transform: none; }
+  [hidden] { display: none !important; }
+  button { font: inherit; cursor: pointer; border: 0; background: none; padding: 0; margin: 0; }
+  button:focus-visible { outline: 3px solid #2563eb; outline-offset: 2px; }
+  .why { font: 700 12px/1 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; padding: 4px 9px; border-radius: 999px;
+         background: #fff; color: #3730a3; box-shadow: inset 0 0 0 1.5px #3730a3; white-space: nowrap; }
+  .why[aria-expanded="true"] { background: #3730a3; color: #fff; }
+  .why-pop { position: absolute; z-index: 2147483000; top: calc(100% + 6px); left: 0; width: max-content; max-width: 440px;
+             padding: 10px 12px; border-radius: 10px; background: #111318; color: #fff; text-align: left;
+             font: 400 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; letter-spacing: normal;
+             text-transform: none; white-space: normal; box-shadow: 0 10px 30px rgba(0,0,0,.3); }
+  :host(:hover) .why-pop[hidden] { display: block !important; }
+  .why-value { display: block; font-weight: 700; margin-bottom: 4px; }
+  .why-quote { display: block; opacity: .92; }
 `

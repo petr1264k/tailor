@@ -3,8 +3,10 @@
  *
  * The site keeps its look. A rewrite swaps the text inside the site's element (same tag, same site styles). A hide
  * sets display:none on the smallest container that holds only the hidden elements and leaves a one-line stub where it
- * stood. A note slots in right after the element it is about. Each change carries a "why" chip. Original ↔ Tailored
- * puts every original node back: `off()` undoes exactly what `on()` did.
+ * stood. A note is a sticky note STUCK ON the element it is about: it lives in an overlay (absolutely positioned in
+ * <body>), pinned to a corner of the element's box, and follows the element through layout changes (see `placePin`).
+ * Each change carries a "why" chip. Original ↔ Tailored puts every original node back: `off()` undoes exactly what
+ * `on()` did.
  *
  * Everything we insert is a custom element (<tailor-note>, <tailor-fold>, <tailor-why>) with its own shadow root, so
  * our styles never reach the site and the site's rarely reach us. Text enters the DOM only via textContent /
@@ -46,9 +48,36 @@ interface InPlaceState {
   bySegment: Map<string, PageSegment>
   resolve: ResolveSegment
   resolveRegion: ResolveRegion
-  /** Hidden elements → the stub that stands in for them (notes anchored inside a fold go after the stub). */
+  /** Hidden elements → the stub that stands in for them (a note anchored inside a fold is pinned to the stub). */
   foldStubs: Map<Element, HTMLElement>
+  /** Sticky notes in the overlay and what each is pinned to. */
+  pins: Pin[]
+  /** Re-places every pin after layout changes: resize, scroll (capture, so sub-scrollers too), body resize, a timer. */
+  watch: { ro: ResizeObserver | null; schedule: () => void; timer: ReturnType<typeof setInterval> | null }
   onPageHide: () => void
+}
+
+interface Pin {
+  host: HTMLElement
+  /** The live element the note is about (or the fold stub standing in for it); null when it is gone. */
+  anchorOf: () => Element | null
+  /** A few px of hand-placed looseness, from the note's text. */
+  jitter: number
+}
+
+/** A placed note's box in viewport coordinates, so later notes do not land on it. */
+interface Box {
+  left: number
+  top: number
+  right: number
+  bottom: number
+}
+
+const anchorsByHost = new WeakMap<Element, () => Element | null>()
+
+/** The element a sticky note is pinned to right now (tests and the scorecard). */
+export function noteAnchor(host: Element): Element | null {
+  return anchorsByHost.get(host)?.() ?? null
 }
 
 /** How each edit op is reported in Interaction.blockType (the frozen types speak in block types). */
@@ -86,10 +115,14 @@ function shadowHost(tag: 'tailor-note' | 'tailor-fold' | 'tailor-why' | 'tailor-
   return { host, root }
 }
 
-/** One "why" chip for a fact: hover previews the quote, click pins it and reports open_why. */
-export function whyChip(fact: Fact, blockType: BlockType, report: (e: InteractionEvent) => void): HTMLElement {
+/**
+ * One "why" chip for a fact: hover previews the quote, click pins it and reports open_why. `onPaper` marks a chip
+ * that sits on a sticky note, which WHY_CSS draws in the note's ink instead of as a bordered chip.
+ */
+export function whyChip(fact: Fact, blockType: BlockType, report: (e: InteractionEvent) => void, onPaper = false): HTMLElement {
   const { host, root } = shadowHost('tailor-why', WHY_CSS)
   host.dataset['factId'] = fact.id
+  if (onPaper) host.dataset['paper'] = ''
   const chip = el('button', 'why', 'why')
   chip.type = 'button'
   chip.setAttribute('aria-expanded', 'false')
@@ -117,26 +150,27 @@ function liveFacts(ids: string[] | undefined, facts: Map<string, Fact>): Fact[] 
 function whyRow(facts: Fact[], blockType: BlockType, report: (e: InteractionEvent) => void): HTMLElement | null {
   if (facts.length === 0) return null
   const row = el('div', 'why-row')
-  for (const f of facts) row.append(whyChip(f, blockType, report))
+  for (const f of facts) row.append(whyChip(f, blockType, report, true))
   return row
 }
 
 const KICKER: Record<'note' | 'warn' | 'promote', string> = { note: 'For you', warn: 'Heads up', promote: 'Moved up for you' }
 
-/** Leans a note picks from: some straight, most a little off, like notes stuck on by hand. Paired with a sideways nudge. */
+/** Leans a note picks from: some straight, most a little off, like notes stuck on by hand. Paired with a few px of jitter. */
 const TILTS = ['-2.2deg', '0deg', '1.6deg', '-0.9deg', '2.4deg', '0deg', '-1.4deg', '1.1deg']
-const NUDGES = ['0px', '18px', '6px', '26px', '12px', '2px', '22px', '9px']
+const JITTERS = [0, 9, 3, 13, 6, 1, 11, 4]
 
 /**
  * A sticky note: tape + paper, leaning its own way. The lean comes from the note's text, so the same note keeps its
- * lean across re-renders and two notes next to each other almost never lean alike.
+ * lean across re-renders and two notes next to each other almost never lean alike. The jitter lands on the host
+ * (data-jitter) for `placePin`.
  */
-function stickyNote(paper: HTMLElement, seed: string): HTMLElement {
+function stickyNote(host: HTMLElement, paper: HTMLElement, seed: string): HTMLElement {
   let h = 0
   for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0
   const sticky = el('div', 'sticky')
   sticky.style.setProperty('--tilt', TILTS[h % TILTS.length]!)
-  sticky.style.setProperty('--nudge', NUDGES[(h >>> 4) % NUDGES.length]!)
+  host.dataset['jitter'] = String(JITTERS[(h >>> 4) % JITTERS.length])
   const tape = el('span', 'tape')
   tape.setAttribute('aria-hidden', 'true')
   sticky.append(tape, paper)
@@ -163,7 +197,7 @@ function noteHost(edit: Extract<PageEdit, { op: 'note' | 'warn' | 'promote' }>, 
     report({ kind: 'ignore', blockType, factIds: edit.factIds })
   })
   note.append(x)
-  root.append(stickyNote(note, edit.op === 'promote' ? edit.reason : edit.text))
+  root.append(stickyNote(host, note, edit.op === 'promote' ? edit.reason : edit.text))
   return host
 }
 
@@ -184,7 +218,7 @@ function fromSiteHost(text: string, siteUrl: string): HTMLElement {
     body.append(span)
   }
   note.append(el('div', 'kicker', `From ${displayHost(siteUrl)} · the site's own words`), body)
-  root.append(stickyNote(note, text))
+  root.append(stickyNote(host, note, text))
   return host
 }
 
@@ -231,6 +265,124 @@ function foldHost(edit: Extract<PageEdit, { op: 'hide' }>, onToggle: (expand: bo
 function placementFor(anchor: Element): Element {
   if (anchor.matches(STRUCTURE_ITEM)) return anchor.closest(STRUCTURE) ?? anchor
   return anchor
+}
+
+/** The anchor to pin to: the fold stub when the anchor sits inside a hidden part, else the anchor itself. */
+function visibleAnchor(anchor: Element, state: InPlaceState): Element {
+  for (const [hidden, stub] of state.foldStubs) {
+    if (hidden === anchor || hidden.contains(anchor)) return stub
+  }
+  return anchor
+}
+
+const EDGE = 8 // keep notes this far inside the viewport
+const INSET = 14 // how far inside the anchor's corner a note sits
+
+/**
+ * Puts a sticky note on its anchor. Tall anchors (images, cards, sections) get the note inside a corner, top-right
+ * first. Short ones (a line or two of text) get it stuck on the right end of the line, centred on it, two thirds
+ * hanging out beside it: into the margin when there is one, over the neighbour when there is not; else hanging off
+ * the line's end below or above it. The first spot clear of earlier notes wins, else the one overlapping them least,
+ * so a note always stays on its anchor. Coordinates come from the live box, so this re-runs on layout changes.
+ */
+function placePin(pin: Pin, taken: Box[]): void {
+  const { host } = pin
+  if (!host.isConnected) return
+  const anchor = pin.anchorOf()
+  const r = anchor?.getBoundingClientRect()
+  const sticky = host.shadowRoot?.querySelector<HTMLElement>('.sticky')
+  if (!anchor || !r || !sticky || (r.width === 0 && r.height === 0)) {
+    host.style.visibility = 'hidden' // the anchor is not rendered right now: no note floating at 0,0
+    return
+  }
+  host.style.visibility = ''
+  const w = sticky.offsetWidth
+  const h = sticky.offsetHeight
+  const tall = r.height >= h + 2 * INSET + 24
+  const spots: [number, number][] = tall
+    ? [
+        [r.right - w - INSET, r.top + INSET],
+        [r.left + INSET, r.top + INSET],
+        [r.right - w - INSET, r.bottom - h - INSET],
+        [r.left + INSET, r.bottom - h - INSET],
+      ]
+    : [
+        [r.right - w / 3, r.top + r.height / 2 - h / 2],
+        [r.right - w + 20, r.bottom - 12],
+        [r.right - w + 20, r.top - h + 12],
+      ]
+  if (r.width < w + 2 * INSET) for (const spot of spots) spot[0] = r.left + (r.width - w) / 2 // narrower than the note: centre on it
+  const viewportW = document.documentElement.clientWidth
+  let left = 0
+  let top = 0
+  let bestOverlap = Infinity
+  for (const [x, y] of spots) {
+    const l = Math.max(EDGE, Math.min(x, viewportW - w - EDGE))
+    const t = y + pin.jitter
+    let overlap = 0
+    for (const o of taken) overlap += Math.max(0, Math.min(l + w, o.right) - Math.max(l, o.left)) * Math.max(0, Math.min(t + h, o.bottom) - Math.max(t, o.top))
+    if (overlap >= bestOverlap) continue
+    left = l
+    top = t
+    bestOverlap = overlap
+    if (overlap === 0) break
+  }
+  taken.push({ left, top, right: left + w, bottom: top + h })
+  // Viewport → the host's containing block: the document (body static) or body's padding box (body positioned).
+  const body = document.body
+  const positionedBody = getComputedStyle(body).position !== 'static'
+  const b = positionedBody ? body.getBoundingClientRect() : null
+  const x = b ? left - b.left - body.clientLeft : left + window.scrollX
+  const y = b ? top - b.top - body.clientTop : top + window.scrollY
+  host.style.left = `${Math.round(x)}px`
+  host.style.top = `${Math.round(Math.max(b ? -b.top : 0, y))}px`
+}
+
+/** Appends the note to the overlay and places every note again (so this one lands clear of the others); `off` is `host.remove()`. */
+function pinNote(host: HTMLElement, anchorOf: () => Element | null, state: InPlaceState): void {
+  const pin: Pin = { host, anchorOf, jitter: Number(host.dataset['jitter'] ?? 0) }
+  anchorsByHost.set(host, anchorOf)
+  state.pins.push(pin)
+  document.body.append(host)
+  placeAll(state)
+}
+
+function placeAll(state: InPlaceState): void {
+  const taken: Box[] = []
+  for (const pin of state.pins) placePin(pin, taken)
+}
+
+function startWatching(state: InPlaceState): void {
+  let queued = false
+  const run = (): void => {
+    queued = false
+    if (state.shown) placeAll(state)
+  }
+  const schedule = (): void => {
+    if (queued) return
+    queued = true
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(run)
+    else setTimeout(run, 16)
+  }
+  state.watch.schedule = schedule
+  window.addEventListener('resize', schedule)
+  window.addEventListener('scroll', schedule, true)
+  window.addEventListener('load', schedule)
+  if (typeof ResizeObserver !== 'undefined') {
+    state.watch.ro = new ResizeObserver(schedule)
+    state.watch.ro.observe(document.documentElement)
+    state.watch.ro.observe(document.body)
+  }
+  state.watch.timer = setInterval(schedule, 1000) // lazy images, fonts, late scripts: cheap, five rect reads a second
+}
+
+function stopWatching(state: InPlaceState): void {
+  window.removeEventListener('resize', state.watch.schedule)
+  window.removeEventListener('scroll', state.watch.schedule, true)
+  window.removeEventListener('load', state.watch.schedule)
+  state.watch.ro?.disconnect()
+  if (state.watch.timer !== null) clearInterval(state.watch.timer)
+  state.watch = { ro: null, schedule: () => {}, timer: null }
 }
 
 function commonAncestor(els: Element[]): Element | null {
@@ -297,6 +449,7 @@ export function teardownInPlace(ui: TailorUi): void {
   if (!state) return
   stopDwell(ui, state)
   for (const a of [...state.applied].reverse()) a.off()
+  stopWatching(state)
   window.removeEventListener('pagehide', state.onPageHide)
   states.delete(ui.root)
 }
@@ -316,6 +469,8 @@ export function applyInPlace(page: TailoredPage, facts: Fact[], ui: TailorUi, ta
     resolve: target.resolve,
     resolveRegion: target.resolveRegion ?? (() => null),
     foldStubs: new Map(),
+    pins: [],
+    watch: { ro: null, schedule: () => {}, timer: null },
     onPageHide: () => {
       const s = states.get(ui.root)
       if (s) stopDwell(ui, s)
@@ -358,7 +513,7 @@ export function applyInPlace(page: TailoredPage, facts: Fact[], ui: TailorUi, ta
           if (anchor && anchor !== element && anchor.parentNode) anchor.parentNode.insertBefore(element, anchor)
           else if (!anchor && firstMovable?.parentElement && !lastPromotedRegion) firstMovable.parentElement.append(element)
           lastPromotedRegion = element
-          element.before(strip)
+          pinNote(strip, () => element, state)
         } else {
           const list = element.parentElement!
           const prev = lastPromotedIn.get(list)
@@ -428,16 +583,16 @@ export function applyInPlace(page: TailoredPage, facts: Fact[], ui: TailorUi, ta
     })
   }
 
-  // 3. Notes and warnings: after the anchor (or after the stub that replaced the part the anchor is in).
-  //    A note anchored to a region goes right after its heading, inside it, so it reads as part of that section.
+  // 3. Notes and warnings: stuck on the anchor's right side (on the fold stub when the anchor is in a hidden part).
+  //    A note on a list item sticks to the whole list; a note on a region sticks to the region's box.
   for (const edit of edits) {
     if (edit.op !== 'note' && edit.op !== 'warn') continue
     const anchor = resolveId(edit.after) ?? (target.segments[0] ? state.resolve(target.segments[0]) : null)
     if (!anchor) continue
     const host = noteHost(edit, state, report)
-    const placement = edit.after.startsWith('r') ? (anchor.querySelector('h1, h2, h3, h4') ?? anchor) : placementFor(anchor)
+    const placement = edit.after.startsWith('r') ? anchor : placementFor(anchor)
     state.applied.push({
-      on: () => insertAfterVisible(placement, host, state),
+      on: () => pinNote(host, () => visibleAnchor(placement, state), state),
       off: () => host.remove(),
     })
   }
@@ -455,34 +610,22 @@ export function applyInPlace(page: TailoredPage, facts: Fact[], ui: TailorUi, ta
   }
 
   window.addEventListener('pagehide', state.onPageHide)
+  startWatching(state)
   states.set(ui.root, state)
   showInPlace(ui)
   return state.applied.length
 }
 
-/** Inserts `host` after `anchor`, or after the fold stub when the anchor sits inside a hidden part. */
-function insertAfterVisible(anchor: Element, host: HTMLElement, state: InPlaceState): void {
-  for (const [hidden, stub] of state.foldStubs) {
-    if (hidden === anchor || hidden.contains(anchor)) {
-      stub.after(host)
-      return
-    }
-  }
-  anchor.after(host)
-}
-
-/** Appends the site's reply after the page's first segment (the headline), or at the top of the body. */
+/** Sticks the site's reply on the page's first segment (the headline), or on the top of the body. */
 export function appendFromSiteInPlace(ui: TailorUi, text: string, siteUrl: string): HTMLElement | null {
   const state = states.get(ui.root)
   if (!state) return null
   const first = state.bySegment.values().next().value as PageSegment | undefined
   const anchor = first ? state.resolve(first) : null
   const host = fromSiteHost(text, siteUrl)
+  const placement = anchor ? placementFor(anchor) : document.body
   const applied: Applied = {
-    on: () => {
-      if (anchor) insertAfterVisible(placementFor(anchor), host, state)
-      else document.body.prepend(host)
-    },
+    on: () => pinNote(host, () => visibleAnchor(placement, state), state),
     off: () => host.remove(),
   }
   state.applied.push(applied)

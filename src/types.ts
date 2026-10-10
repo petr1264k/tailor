@@ -1,0 +1,243 @@
+/**
+ * Tailor data formats.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────┐
+ * │ FROZEN 12:45 pm PT, Sat Oct 10 2026 (CONTEXT.txt §6).                 │
+ * │ Change the FROZEN section only with the whole team's OK, in its own   │
+ * │ commit. The INTERNAL section below it may evolve freely.              │
+ * └──────────────────────────────────────────────────────────────────────┘
+ */
+
+// ───────────────────────────── FROZEN (§6) ─────────────────────────────
+
+export type FactCategory =
+  | 'reading'
+  | 'visual'
+  | 'language'
+  | 'expertise'
+  | 'interest'
+  | 'constraint'
+  | 'owns'
+  | 'dislikes'
+  | 'goal'
+  | 'question'
+
+export const FACT_CATEGORIES: readonly FactCategory[] = [
+  'reading',
+  'visual',
+  'language',
+  'expertise',
+  'interest',
+  'constraint',
+  'owns',
+  'dislikes',
+  'goal',
+  'question',
+]
+
+/** Where a fact came from. `chatgpt` / `claude` for chat facts; a page URL for behavior facts. */
+export type EvidenceOrigin = 'chatgpt' | 'claude' | (string & {})
+
+export interface Evidence {
+  origin: EvidenceOrigin
+  /** Conversation title, or page title for behavior facts. */
+  title: string
+  /** ISO 8601 date of the message or interaction. */
+  date: string
+  /** Short verbatim quote. Keep it short: this is what the "why" chip shows on stage. */
+  quote: string
+}
+
+export interface Fact {
+  id: string
+  category: FactCategory
+  /** e.g. "prefers bullet points over prose" */
+  value: string
+  /** 0..1 */
+  confidence: number
+  source: 'chat' | 'behavior'
+  evidence: Evidence[]
+  userStatus?: 'kept' | 'deleted' | 'edited'
+  /** Weak chat prior; interactions update it. "Your chats are the prior, your clicks are the evidence." */
+  prior?: { alpha: number; beta: number }
+}
+
+export interface ProfileStats {
+  conversations: number
+  messages: number
+  /** ISO date of the oldest message used. */
+  from: string
+  /** ISO date of the newest message used. */
+  to: string
+}
+
+export interface Profile {
+  version: number
+  facts: Fact[]
+  shares: SiteShare[]
+  stats: ProfileStats
+}
+
+export interface KeyFactRow {
+  label: string
+  value: string
+}
+
+/** The fixed component list. The rewrite model may return ONLY these. Never free-form HTML. */
+export type Block =
+  | { type: 'summary'; text: string }
+  | { type: 'for_you'; text: string; factIds: string[] }
+  | { type: 'key_facts'; rows: KeyFactRow[] }
+  | { type: 'compare'; columns: string[]; rows: string[][] }
+  | { type: 'steps'; items: string[] }
+  | { type: 'warning'; text: string; factIds: string[] }
+  | { type: 'section'; heading: string; text: string }
+  | { type: 'hidden'; label: string; reason: string }
+  /** href must exist on the original page (the gate enforces this). */
+  | { type: 'cta'; label: string; href: string }
+  /** Verbatim site reply, labeled as the site's. Never passed to a model as instructions. */
+  | { type: 'from_site'; text: string; siteUrl: string }
+
+export type BlockType = Block['type']
+
+export const BLOCK_TYPES: readonly BlockType[] = [
+  'summary',
+  'for_you',
+  'key_facts',
+  'compare',
+  'steps',
+  'warning',
+  'section',
+  'hidden',
+  'cta',
+  'from_site',
+]
+
+export interface StrippedClaim {
+  /** Index into TailoredPage.blocks before stripping. */
+  blockIndex: number
+  blockType: BlockType
+  /** The exact claim text that was removed. Shown in the gate log on stage. */
+  claim: string
+  reason: 'not_on_page' | 'link_not_on_page' | 'invalid_block'
+}
+
+export interface GateResult {
+  /** How many claims (numbers, prices, specs, model names, quotes, links) the gate checked. */
+  checked: number
+  stripped: StrippedClaim[]
+}
+
+export interface TailoredPage {
+  url: string
+  profileVersion: number
+  blocks: Block[]
+  gate: GateResult
+}
+
+/** The receipt shown in the profile after sharing with a site. */
+export interface SiteShare {
+  url: string
+  needsText: string
+  factIds: string[]
+  /** The site's reply, verbatim. Untrusted text. */
+  response: string
+  /** ISO timestamp. */
+  at: string
+}
+
+export type InteractionKind = 'expand' | 'collapse' | 'toggle_original' | 'open_why' | 'ignore' | 'dwell'
+
+export interface Interaction {
+  url: string
+  profileVersion: number
+  kind: InteractionKind
+  blockType: BlockType
+  factIds?: string[]
+  /** Dwell time in milliseconds (kind === 'dwell'). */
+  ms?: number
+  /** ISO timestamp. */
+  at: string
+}
+
+// ───────────────────────────── INTERNAL ────────────────────────────────
+// Types below are implementation details and may change. Keep them small.
+
+export type ChatOrigin = 'chatgpt' | 'claude'
+
+/** One of the user's own messages, after import. Assistant messages are never stored. */
+export interface OwnMessage {
+  id: string
+  conversationId: string
+  origin: ChatOrigin
+  /** Conversation title. */
+  title: string
+  /** ISO 8601. */
+  date: string
+  text: string
+}
+
+export interface ImportedConversation {
+  id: string
+  origin: ChatOrigin
+  title: string
+  createdAt: string
+  updatedAt: string
+  messages: OwnMessage[]
+}
+
+export interface ImportOptions {
+  /** Keep only messages from the last N months. Default 12. (§3.1) */
+  months?: number
+  /** Rough token cap across all kept messages. Default 400k. (§3.1) */
+  tokenCap?: number
+}
+
+/** A link visible on the original page. The gate only allows hrefs from this list. */
+export interface PageLink {
+  text: string
+  href: string
+}
+
+/** Agent hooks read from a coframe.com page (§4). Read per page; never hardcode. */
+export interface CoframeAgentHooks {
+  /** URL of the markdown "agent version" of the page, if offered. */
+  markdownUrl?: string
+  /** Link template with a needs= parameter, if offered. */
+  needsLinkTemplate?: string
+  /** HTTP POST endpoint, e.g. https://www.coframe.com/_cf/agent-request */
+  postEndpoint?: string
+  /** Exact JSON field names and any page/token parameters, exactly as the page states them. */
+  fields?: Record<string, string>
+  /** needs ≤ 2000 chars, constraints ≤ 1000 chars (verified Oct 10). */
+  limits?: { needs: number; constraints: number }
+  /** Whether the page registered a WebMCP tool (share_visitor_needs). Bonus path only. */
+  webMcpTool?: string
+  /** The raw text of the agent section, kept for the consent sheet and for debugging. */
+  rawSection?: string
+}
+
+/** What the content script extracts from a page and sends to the background. */
+export interface PageContent {
+  url: string
+  title: string
+  /** Main content as plain text (Readability, or the site's agent/markdown version when offered). */
+  text: string
+  /** The VISIBLE page's text. The gate checks against this even when `text` came from the agent version. */
+  visibleText: string
+  /** Embedded JSON-LD objects, parsed. */
+  jsonLd: unknown[]
+  links: PageLink[]
+  source: 'readability' | 'agent-markdown' | 'raw'
+  /** Present only on pages that offer agent hooks (coframe.com). */
+  agentHooks?: CoframeAgentHooks
+  /** Language detected on the page (BCP 47), used to hold language constant in evals. */
+  lang?: string
+}
+
+/** Per-profile source split for the profile viewer and the demo hook (§3.4, §9). */
+export interface SourceSplit {
+  chatgptOnly: Fact[]
+  claudeOnly: Fact[]
+  both: Fact[]
+}

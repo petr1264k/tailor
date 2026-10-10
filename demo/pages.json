@@ -1,0 +1,6 @@
+[
+  { "id": "product", "url": "", "file": "demo/pages/1-product.html", "kind": "product", "note": "TV or laptop, pick by 16:00" },
+  { "id": "docs", "url": "", "file": "demo/pages/2-docs.html", "kind": "docs", "note": "dense docs page" },
+  { "id": "recipe", "url": "", "file": "demo/pages/3-recipe.html", "kind": "recipe", "note": "diet, allergens, cooking time" },
+  { "id": "coframe", "url": "https://www.coframe.com/", "file": "demo/pages/4-coframe.html", "kind": "coframe", "note": "the finale; agent hooks read from the page" }
+]

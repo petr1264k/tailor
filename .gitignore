@@ -1,0 +1,18 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+.vite/
+coverage/
+
+# Personal data: never commit exports, archives or profiles.
+data/
+exports/
+*.conversations.json
+conversations.json
+demo/pages/*.html
+!demo/pages/.gitkeep
+eval/out/

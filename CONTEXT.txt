@@ -1,0 +1,318 @@
+TAILOR × COFRAME: FULL CONTEXT FOR THE BUILD REPO
+Written Sat Oct 10 2026, 12:35 pm PT, at the event. Drop this file into the new repo (e.g. as CONTEXT.txt) and point CLAUDE.md at it.
+Anything marked [UNVERIFIED] came from notes and wasn't re-checked. Don't state it on stage as fact.
+
+
+========================================================================
+0. RULES FOR WHOEVER WRITES CODE IN THIS REPO
+========================================================================
+- Everything is built today, at the event. Nothing comes from any pre-existing project or anyone's existing code.
+- Judging is what matters: a demo that runs, an honest number, a clear story. Rank every choice by how it looks to the judges.
+- The model proposes, code decides. Every model output passes a code-only check before a user sees it.
+- Anything a website sends back is untrusted text. Never pass it to a model as instructions.
+- Local-first. The chat archive and the profile stay in the browser. There's no server and no account. The only outbound calls are model API calls and opt-in sharing with a site.
+- Never show raw chats on stage. Only show facts the owner approved and short quotes.
+- Times are Pacific. The hard deadline is a SAVED DRAFT by 7:00 pm. Aim for 6:45 pm.
+
+
+========================================================================
+1. THE EVENT
+========================================================================
+The Living Internet Build Day · AGI House × Coframe · Sat Oct 10 2026 · Hillsborough
+Theme: interfaces that adapt and rewrite themselves in real time, for every visitor. Humans and agents are both users of the web.
+
+Schedule
+  10:00  doors
+  11:05  keynotes: Josh Payne (Coframe CEO), Roland Gavrilescu (Introspection CEO)
+  12:00  team formation + 30-second pitches
+  12:30  hacking starts
+  16:00  check-in
+  19:00  "Save Draft of Project". Finalists are picked from saved drafts. THE REAL DEADLINE.
+  19:30  submissions close
+  19-20  judges review
+  20:00  finalists demo live: about 3 min + Q&A. Have a backup recording.
+  ~20:45 awards. Prize pool about $4K.
+
+Judges
+  - Aleksey Korshuk: Coframe, Head of ML. Measurement, evals, learning from engagement signals.
+  - Pavlo Razumovskyi: Coframe co-founder / VP Eng. Ex-Pinterest gen AI. Polish, speed, robustness.
+  - Kazuki Nakayashiki: Glasp CEO. Consumer Chrome extensions; AI "clones" built from people's highlights.
+  - Nicole Wong: Stanford SAIL researcher. Method: baselines, chance levels, stated sample sizes.
+
+What wins here (from AGI House's primer and past winners)
+  - "The best projects ... have a demo that operates and an honest measurement." (AGI House primer, Oct 8)
+  - "Generating an interface is now easy." Teams stand out on which interface they show, to which person, and how they measure the result.
+  - "The model proposes, code decides" was the shared idea behind the last build day's winners.
+  - A working link and a filled-in write-up at 7:00 pm. Blank drafts don't reach the finals.
+  - Primer ideas everyone got: #8 storefront per visitor and #17 personalization without flicker. Expect other "page rewrites itself for you" teams. Our edges are the AI-history profile, the evidence on every change, the fidelity gate, the Coframe handshake and the numbers.
+
+Logistics: Wi-Fi is Latentspace / attentionisallyouneed. Park on the golf-course side of Eucalyptus St only.
+
+
+========================================================================
+2. TEAM
+========================================================================
+- Petr: frontend and UI polish. Owns the extension UI, the in-page renderer, the demo and the video.
+- Mikhail Kirsanov: ex-CTO of JetSmarter/XO. Owns the engine: parsers, extraction, gate, caching, the measurement harness.
+- Possible third: an engineer who has shipped LLM agents. Owns prompts, relevance selection, speed and evals.
+  If it's only two people: Mikhail also takes the prompts, Claude import becomes a stretch goal, and the side panel is cut.
+
+
+========================================================================
+3. THE PRODUCT: TAILOR
+========================================================================
+One line: your ChatGPT and Claude history knows you better than any website does. Tailor turns it into a private profile, and a Chrome extension rewrites any page for you. Every change cites your words, and code checks every fact. When a site asks what you need, Tailor answers with three facts, with your consent.
+
+How to position Coframe: as the counterpart, never the contrast. Two judges are from Coframe, and their CEO gave the keynote.
+  Don't say: "Coframe/Mutiny optimize for segments; we do one person."
+  Say: "Coframe's own site already asks your agent what you need. Tailor is how you answer."
+
+Pipeline
+1. IMPORT. The user drops in conversations.json from their ChatGPT export (Settings > Data controls > Export data) and/or their Claude export (Settings > Privacy > Export data).
+   - Take that one file, not the whole zip: zips can be gigabytes.
+   - Keep only the user's own messages. Store them in IndexedDB.
+   - Limits: last 6 to 12 months, with a token cap.
+2. EXTRACT. Map-reduce.
+   - Haiku 5.5 (claude-haiku-5-5) reads chunks and proposes candidate facts, each with a short supporting quote.
+   - Sonnet 5.5 (claude-sonnet-5-5) merges duplicates and scores each fact by frequency and recency.
+   - Also extract the questions the person asks again and again (e.g. "will it work with my PS5?"). The first-screen eval uses them.
+3. FILTER. Never extract health, religion, politics, sexuality, exact location, detailed finances, or other people's names.
+   - Enforced by code rules plus a classifier.
+   - The UI shows a "never extracted" list with counts.
+4. PROFILE. A list of facts, each with its source ("ChatGPT, Aug 3: 'just got a PS5, which TV should I get?'").
+   - Keep, edit or delete any fact.
+   - Group by source: what ChatGPT knows, what Claude knows, and the overlap.
+5. TAILOR. On a page, extract the main content.
+   - Use Mozilla Readability plus the page's embedded JSON-LD.
+   - If the site offers an agent/markdown version, use that instead (see section 4).
+   - Send the content plus ONLY the facts relevant to this page to a fast model.
+   - The model returns JSON blocks from a fixed component list (section 6), never free-form HTML.
+   - Output is in the user's chat language, at their reading level.
+   - Pre-tailor on page load, and cache per (url, profileVersion).
+6. FIDELITY GATE (code only, no model).
+   - Pull every number, price, spec, model name and quoted claim out of the blocks, and check each one appears in the original visible page.
+   - Strip and count anything that doesn't.
+   - Facts from the user's profile (e.g. their budget) are labeled as the user's.
+   - Links must exist on the original page.
+   - The gate checks the VISIBLE page even when we extracted from the agent version.
+7. RENDER IN PLACE. Use a shadow root so the site's CSS doesn't clash.
+   - A floating Original ↔ Tailored switch.
+   - Every change has a "why" chip that opens the exact quote from the user's chats.
+8. LEARN. Log interactions: expand, collapse, toggle back to the original, open "why", ignore a note, dwell time.
+   - These signals update the profile as behavior facts, each with evidence.
+   - Treat each layout choice (specs first, marketing collapsed, ...) as a small per-person bandit (Beta prior).
+   - Seed it with a WEAK prior from the chats, and let clicks override it quickly. Line for stage: "Your chats are the prior, your clicks are the evidence."
+   - Reason [UNVERIFIED, from notes on Coframe's blog post about predicting A/B winners]: in their simulation, a strong but imperfect prior converged slower (about 171 days vs 100 from a cold start). A weak prior helped slightly.
+9. SHARE WITH SITES (now a must-have, built only for coframe.com). See section 4.
+
+
+========================================================================
+4. COFRAME.COM AGENT HOOKS
+========================================================================
+VERIFIED at 12:20 pm Oct 10 by fetching coframe.com. Nothing has been sent to it yet.
+- The site serves an "agent version" of each page: "the same facts as the page, as text", as markdown.
+- Each page has an optional section addressed to agents titled "Get a recommendation for your user (optional)". It offers:
+  - links to follow,
+  - a link with a needs= parameter,
+  - an HTTP POST to https://www.coframe.com/_cf/agent-request with a JSON body,
+  - a WebMCP tool, share_visitor_needs, registered by the page "if your browser supports it".
+  - Limits: needs ≤ 2,000 chars, constraints ≤ 1,000 chars. The agent also sends its own name.
+- Its rules for agents:
+  - "Check with your user before you share, unless they have already asked you to find, compare or choose options for them."
+  - "Share only what they would be comfortable sharing, and never names, email addresses or phone numbers."
+- [UNVERIFIED] Page and token parameters differ per page. Read them from each page's agent section; never hardcode them. Read the exact JSON field names from the page too.
+- [UNVERIFIED] What triggers the markdown version. Test with curl: first an `Accept: text/markdown` header, then an agent-style User-Agent.
+- [UNKNOWN] Whether share_visitor_needs runs on Coframe CUSTOMER sites or only on coframe.com. Ask Josh or Pavlo today. If yes, the business answer is "every Coframe-powered site already has the receiving end". Say it on stage ONLY if they confirm.
+
+Share flow (the HTTP endpoint is the main path; WebMCP is a bonus because its API is still unsettled)
+1. Take the few facts the rewrite step already chose for this page and turn them into a 1 to 2 sentence needs string.
+2. Run it through the sensitive filter. Never send names, emails or phone numbers.
+3. Show a consent sheet with the text word for word and the facts it uses (each with its source). Buttons: "Share 3 facts" and "Don't share". Sharing is opt-in per site.
+4. POST it with agent name "Tailor".
+5. Show the site's reply in its own block labeled "From coframe.com · the site's own words":
+   - plain text,
+   - NEVER passed to the rewrite model as instructions,
+   - links in it must exist on the original page,
+   - numbers in it are marked as the site's claims.
+6. Save a receipt in the profile: what was sent, which facts, which site, when.
+Before the feature freeze: call the endpoint ONCE with a made-up needs string to see the reply format and speed, and cache that reply as the demo fallback. Get the team's OK before sending anything.
+
+Line for stage: "Tailor sends only what you approved, and shows only what the site said, labeled as the site's."
+
+
+========================================================================
+5. STACK
+========================================================================
+- Chrome extension: Manifest V3, TypeScript, Vite + @crxjs/vite-plugin.
+- UI: React for the import screen and the profile viewer; plain DOM inside a shadow root for the in-page render.
+- Storage: IndexedDB for the archive. Request the unlimitedStorage permission.
+- Libraries: @mozilla/readability, and jszip only if we accept zips.
+- Models: claude-haiku-5-5 for extraction and fast rewrites, claude-sonnet-5-5 for the merge. Gemini Flash-Lite is an alternative for rewrites if it's faster on the day.
+- API calls go from the background service worker. For browser-side Anthropic calls, set the header anthropic-dangerous-direct-browser-access: true. A tiny local proxy is the fallback.
+- Keys: Anthropic, Google AI Studio, OpenRouter (fallback). Never commit keys.
+- Use a clean Chrome profile with Developer mode on for the demo.
+
+
+========================================================================
+6. DATA FORMATS (freeze these first)
+========================================================================
+  Fact = {
+    id,
+    category: reading | visual | language | expertise | interest | constraint | owns | dislikes | goal | question,
+    value: "prefers bullet points over prose",
+    confidence: 0..1,
+    source: "chat" | "behavior",
+    evidence: [{ origin: chatgpt | claude | page-url, title, date, quote }],
+    userStatus?: kept | deleted | edited,
+    prior?: { alpha, beta }          // weak chat prior; interactions update it
+  }
+  Profile = { version, facts: Fact[], shares: SiteShare[], stats: { conversations, messages, from, to } }
+
+  Block = summary(text)
+        | for_you(text, factIds)
+        | key_facts(rows)
+        | compare(columns, rows)
+        | steps(items)
+        | warning(text, factIds)
+        | section(heading, text)
+        | hidden(label, reason)
+        | cta(label, href)            // href must exist on the original page
+        | from_site(text, siteUrl)    // verbatim site reply, labeled as the site's
+
+  TailoredPage = { url, profileVersion, blocks: Block[], gate: { checked, stripped[] } }
+  SiteShare    = { url, needsText, factIds, response, at }   // the receipt shown in the profile
+  Interaction  = { url, profileVersion, kind: expand | collapse | toggle_original | open_why | ignore | dwell,
+                   blockType, factIds?, ms?, at }
+
+
+========================================================================
+7. TIMELINE (hacking started 12:30)
+========================================================================
+  12:45  Data formats frozen. Repo created. Empty extension loads in Chrome.
+  14:30  MUST work end to end:
+         - ChatGPT conversations.json → own messages → extraction on a sample → profile with evidence
+         - Tailor button on one demo page → tailored render → switch back to the original
+  16:00  Demo pages picked, with offline copies saved. Coframe endpoint called once (with the team's OK), and the reply cached.
+  17:00  SHOULD be done:
+         - Claude import; full extraction; profile viewer with keep/delete and the source split
+         - sensitive filter; fidelity gate with counts; "why" chips
+         - share-with-coframe.com flow with consent sheet and receipt
+         - learning loop; language and reading level
+         - second profile; caching and pre-tailoring
+         - evals run (section 8)
+         Record backup video #1.
+  17:30  Feature freeze.
+  18:30  Fill in the real numbers in the write-up.
+  18:45  Draft SAVED, with the video as the main link.
+  19:30  Submissions close.
+
+Demo pages
+  1. A long product page (TV or laptop).
+  2. A dense docs page (examples reordered for your stack and level).
+  3. A recipe page (diet, allergens, cooking time).
+  4. coframe.com: the finale. Tailored for Mikhail as a CTO vs Petr as a frontend builder, then the share.
+
+Stretch (only if the core is done by 17:00)
+  - get_preferences_for(page) tool so the user's own agent can use the profile.
+  - Living profile: a content script on chatgpt.com / claude.ai adds new chats to the archive.
+  - Tailor a judge-suggested URL live.
+  - Gemini import.
+Not building: accounts, sync, mobile, payments.
+
+
+========================================================================
+8. MEASUREMENT (state N out loud; all numbers measured today)
+========================================================================
+1. Questions answered on the first screen (the main number).
+   - Per person and page, take 5 questions that person actually asks, from their mined questions.
+   - The answer must be text copied exactly from the page; code verifies this.
+   - Code checks whether each answer is visible on the first screen of the original vs the tailored page.
+   - To keep it honest: build the profile from older chats and draw the questions from newer ones (held out).
+2. Profile precision: each owner marks every extracted fact right or wrong (about 5 min each).
+3. Blind test, done the way Coframe's ML team scores pairs.
+   - Context [UNVERIFIED, from notes on their October post about predicting A/B winners]: models picked whichever design was shown second 51.8% to 83.3% of the time.
+   - Human test: alternate which side shows the person's own page, and report picks by side.
+   - LLM judges: run every comparison in both orders and count only consistent verdicts, so chance is 25%. Say on stage that this follows their post.
+   - Sample size (one-sided binomial, p < 0.05), with 10 trials (5 pages × 2 people):
+     - at 50% chance (human picks), you need 9 of 10;
+     - at 25% chance (order-swapped LLM judges), you need 6 of 10.
+   - Hold language constant. If one version comes back in Russian, the test measures language, not tailoring.
+4. Invented facts shown to users: 0. Plus how many unsupported claims the gate caught and stripped.
+5. Speed: time to first tailored content, and words before vs after.
+6. Learning: how the profile changed after N interactions, and how the next page differed.
+
+
+========================================================================
+9. THE 3-MINUTE FINALIST DEMO (ends on coframe.com)
+========================================================================
+0:00-0:20  Hook.
+           - "Your ChatGPT and Claude history knows you better than any website does."
+           - Show the archive: N conversations, M messages, two sources.
+           - Show the split: what ChatGPT knows, what Claude knows, the overlap.
+0:20-0:45  Profile.
+           - Facts with source quotes. Delete one live.
+           - Show the "never extracted" list.
+0:45-1:25  Tailor.
+           - Open a TV page as everyone sees it, then click Tailor.
+           - "For you" notes: PS5 compatibility first, budget checked, marketing collapsed.
+           - Hover a "why" chip to show the quote. Flip original ↔ tailored.
+1:25-1:45  Loop.
+           - Expand the collapsed specs twice. The profile updates on screen.
+           - The next product shows specs first. "Your chats are the prior, your clicks are the evidence."
+1:45-2:05  Trust.
+           - "The model wrote '120 Hz on all four HDMI ports'. The page never says that, so code stripped it."
+           - Gate log: checked N, stripped X, shown 0.
+2:05-2:40  coframe.com.
+           - Tailor the judges' homepage for Mikhail (CTO: fits the existing stack, integration time, SOC 2, approval before go-live, fallbacks).
+           - Then for Petr (frontend: generated components and layouts).
+           - One tap shares 3 facts through the consent sheet. Coframe's own reply appears inside the tailored page, labeled as theirs.
+2:40-3:00  Numbers and close.
+           - Numbers: first-screen answers before vs after, profile precision, blind test vs 25% chance, 0 invented facts.
+           - Close: "Coframe taught sites to ask what a visitor needs. Tailor is how the visitor answers: with consent, every fact traced to their own words. You just watched it happen."
+           - Use the "taught sites" wording only if Coframe confirms the endpoint runs beyond coframe.com. Otherwise say "Coframe's own site asks...".
+Fallbacks: cached tailored versions and offline copies of every demo page, the cached Coframe reply, and the backup video.
+
+
+========================================================================
+10. 30-SECOND PITCH (71 words)
+========================================================================
+0:00-0:05  "Your ChatGPT and Claude history knows you better than any website does."
+0:05-0:15  "Tailor turns it into a private profile, and a Chrome extension rewrites any page for you. Every change cites your words. Code checks every fact."
+0:15-0:25  "Coframe's own site already asks your agent what you need. Tailor is how you answer: three facts, with consent. Live on coframe.com tonight."
+0:25-0:30  "We need one engineer who's shipped LLM agents. Find us after."
+
+
+========================================================================
+11. Q&A CHEAT SHEET
+========================================================================
+Isn't Coframe already doing this? Coframe's site gives agents a way to say what a visitor needs. Tailor is the visitor's side: it picks what to share, asks you first, and keeps a receipt.
+Privacy? Local-first. Each page gets only the few facts it needs. Sensitive topics are never extracted. Sharing is opt-in per site and shows the exact words first. Names, emails and phones are never sent.
+Can the site's reply hijack the rewrite? No. It's plain text in its own labeled block, never passed to the model as instructions. Links must exist on the page, and numbers are marked as the site's claims.
+Hallucinations? The fidelity gate checks every number, price and spec against the original page and strips the rest. Show the count.
+Just a summarizer? A summarizer doesn't know you. Tailor uses your context, cites why, learns from use, and people pick their own page in a blind test.
+Doesn't ChatGPT memory do this? That stays inside one company and answers in a sidebar. Tailor merges ChatGPT and Claude into a profile you own and rewrites the page itself, with a fact check.
+Why chats, not browsing history? Browsing shows what you clicked. Chats show what you wanted and why, in your own words.
+How do you know it works? Profile precision, first-screen answers before vs after, and a blind test with the order swapped (chance 25%), with N stated.
+Is using the exports allowed? It's your own data, exported through the official feature.
+Built today? Yes. Before the event we only planned, made mockups and requested exports.
+Business? A consumer extension distributed like Glasp, and the visitor-side client for sites that ask agents what their visitor needs.
+
+
+========================================================================
+12. RISKS
+========================================================================
+- Exports arrive late or are huge → conversations.json only, own messages only, recent months, token cap.
+- Messy real pages → Readability + JSON-LD + agent versions where offered; 4 tested demo pages with offline copies.
+- Slow rewrites → fast model, compact JSON, streaming, pre-tailor on load, cache.
+- Coframe endpoint changes or is slow → read its parameters from the page, cache one real reply, label the fallback honestly.
+- Prompt injection from site replies → the reply is never sent to the model as instructions; shown as plain text only.
+- Personal chats on a projector → owner-approved facts and short quotes only; each owner reviews their profile before demos.
+- "Another reshape-the-web extension" (DonnaOS didn't reach the finals; EnableOS won on accessibility) → lead with the AI-history profile, evidence, gate, Coframe handshake and numbers.
+
+
+========================================================================
+13. SUBMISSION TEXT (draft; fill in [brackets] at 18:30)
+========================================================================
+Tailor: your AI history knows you; now every page does too.
+Your ChatGPT and Claude history knows you better than any website does. Tailor turns those exports into a private, local preference profile in which every fact cites the conversation it came from. Sensitive topics are never extracted, and you can delete anything. A Chrome extension rewrites any page for you, in your language and at your level: it surfaces what matters to your situation, collapses fluff, and explains each change with a link to your own words. It learns from how you use each page: your chats are the prior, your clicks are the evidence. When a site asks what you need, as coframe.com already does, Tailor shows you the exact words, shares three facts only if you agree, and keeps a receipt. The site's reply appears labeled as the site's and never steers the model. A code-only fidelity gate checks every number, price and spec against the original page: across [N] tailored pages it caught [X] unsupported claims and showed 0. Questions each person actually asks were answered on the first screen [a]/[n] times on the original pages vs [b]/[n] tailored. Owners rated [P]% of extracted facts correct. In an order-swapped blind test, people picked their own page [A] of [B] times (chance: [25 or 50]%).
+Video: [link] · Repo: [link]

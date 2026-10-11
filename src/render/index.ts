@@ -88,6 +88,12 @@ export interface TailorUi {
   readStatus(): { text: string; isError: boolean; isGate: boolean }
   /** The scorecard chip ("1st match 3.6 screens down → first screen · words 2,870 → 1,140"); clicking it opens the rows. null clears it. */
   setScorecard(card: Scorecard | null): void
+  /**
+   * The progress pill in the bottom-right corner: the one thing of ours that is on screen during a run, and only then.
+   * `setMode('loading')` shows it with a sliding bar (the model call, no progress known); `setProgress(done, total)`
+   * shows it with a filled bar while the changes play; any other `setMode` hides it. Never pass message text here.
+   */
+  setProgress(done: number, total: number, label?: string): void
   destroy(): void
 }
 
@@ -139,8 +145,40 @@ export function mountTailorButton(callbacks: RenderCallbacks): TailorUi {
   // Never shown: the page carries only the changes themselves. The popup drives Tailor / Show original / Share and
   // reads the status through readStatus, numbers included. The bar stays so those paths work.
   bar.hidden = true
-  root.append(style, bar, gatePop, scorePop)
+  // The progress pill (bottom right): shown for the length of a run only, so the person sees the page is being fitted.
+  const progress = el('div', 'progress')
+  progress.setAttribute('role', 'progressbar')
+  progress.setAttribute('aria-label', 'Tailoring this page')
+  progress.hidden = true
+  const progressText = el('span', 'progress-text')
+  const progressTrack = el('span', 'progress-track')
+  const progressFill = el('span', 'progress-fill')
+  progressTrack.append(progressFill)
+  progress.append(progressText, progressTrack)
+  root.append(style, bar, gatePop, scorePop, progress)
   document.documentElement.append(host)
+
+  /** Shows the pill. `done`/`total` fill the bar; without them it slides (indeterminate). */
+  const showProgress = (text: string, done?: number, total?: number): void => {
+    progressText.textContent = text
+    progress.title = text
+    const known = done !== undefined && total !== undefined && total > 0
+    progress.classList.toggle('is-indeterminate', !known)
+    if (known) {
+      const pct = Math.max(0, Math.min(100, Math.round((done / total) * 100)))
+      progressFill.style.width = `${pct}%`
+      progress.setAttribute('aria-valuenow', String(done))
+      progress.setAttribute('aria-valuemax', String(total))
+    } else {
+      progressFill.style.width = ''
+      progress.removeAttribute('aria-valuenow')
+      progress.removeAttribute('aria-valuemax')
+    }
+    progress.hidden = false
+  }
+  const hideProgress = (): void => {
+    progress.hidden = true
+  }
 
   let mode: UiMode = 'original'
   const ui: TailorUi = {
@@ -157,6 +195,9 @@ export function mountTailorButton(callbacks: RenderCallbacks): TailorUi {
       toggle.hidden = !has || next === 'loading'
       toggle.textContent = next === 'tailored' ? 'Original' : 'Tailored'
       share.hidden = !callbacks.onShare || !has || next !== 'tailored'
+      // The pill follows the mode: on while the model works, off the moment a view (or the original) is settled.
+      if (next === 'loading') showProgress('Tailoring this page for you')
+      else hideProgress()
     },
     setGateSummary(checked, stripped, log) {
       ui.setStatus(`checked ${checked} · stripped ${stripped}`)
@@ -189,6 +230,11 @@ export function mountTailorButton(callbacks: RenderCallbacks): TailorUi {
       score.textContent = chip
       score.title = scorecardLine(card)
       renderScorePop(scorePop, card)
+    },
+    setProgress(done, total, label) {
+      // total 0 = the count is not known yet (between the model's reply and the first change): the bar slides.
+      if (total <= 0) return showProgress(label ?? 'Tailoring this page for you')
+      showProgress(label ? `${done}/${total} · ${label}` : `${done}/${total}`, done, total)
     },
     destroy() {
       teardownInPlace(ui)
@@ -413,6 +459,7 @@ export async function playTailored(page: TailoredPage, facts: Fact[], ui: Tailor
   dropPanel(ui)
   applyInPlace(page, facts, ui, target, false)
   ui.setMode('tailored')
+  ui.setProgress(0, 0, 'Fitting the page') // the pill stays up across the first scroll; onStep fills it from here
   return playInPlace(ui, opts)
 }
 

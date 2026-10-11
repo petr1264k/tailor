@@ -113,6 +113,28 @@ describe('mountTailorButton', () => {
     expect(buttonByText('Original')?.hidden).toBe(false)
   })
 
+  it('shows the progress pill only while a run is on', () => {
+    setup()
+    const pill = q('.progress')
+    expect(pill.hidden).toBe(true)
+    ui!.setMode('loading')
+    expect(pill.hidden).toBe(false)
+    expect(pill.classList.contains('is-indeterminate')).toBe(true)
+    expect(q('.progress-text').textContent).toBe('Tailoring this page for you')
+    ui!.setProgress(3, 12, 'Moved up: Prime 100W')
+    expect(pill.classList.contains('is-indeterminate')).toBe(false)
+    expect(q('.progress-text').textContent).toBe('3/12 · Moved up: Prime 100W')
+    expect(q('.progress-fill').style.width).toBe('25%')
+    expect(pill.getAttribute('aria-valuenow')).toBe('3')
+    ui!.setProgress(0, 0)
+    expect(pill.classList.contains('is-indeterminate')).toBe(true)
+    ui!.setMode('tailored')
+    expect(pill.hidden).toBe(true)
+    ui!.setMode('loading')
+    ui!.setMode('original')
+    expect(pill.hidden).toBe(true)
+  })
+
   it('shows the error in the bar when onTailor fails', async () => {
     const { callbacks } = setup()
     callbacks.onTailor.mockRejectedValue(new Error('No Anthropic API key'))

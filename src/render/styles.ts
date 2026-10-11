@@ -116,6 +116,32 @@ export const PANEL_CSS = `
   .score-pop td:first-child { color: var(--t-muted-on-dark); padding-right: 12px; width: 48%; }
   .score-pop .foot { margin-top: 8px; color: var(--t-muted-on-dark); font-size: 12px; }
 
+  /* ── Progress pill: the only thing of ours on screen during a run, in the corner the bar would use. A card with
+        the mark, a one-line label and a thin bar: sliding while the model works, filling as the changes play.
+        It leaves the moment the run settles (setMode). ── */
+  .progress { position: fixed; right: 14px; bottom: 14px; z-index: 2147483647; width: 272px; max-width: calc(100vw - 28px);
+              display: grid; grid-template-columns: 18px 1fr; column-gap: 10px; align-items: center; padding: 11px 16px 11px 13px;
+              font: 500 10px/1.3 var(--t-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--t-ink);
+              background: var(--t-card); border-radius: 14px; -webkit-font-smoothing: antialiased;
+              box-shadow: 0 0 0 1px rgba(31,33,47,.08), 0 1px 3px rgba(31,33,47,.08), 0 12px 28px -10px rgba(31,33,47,.35);
+              animation: t-progress-in .28s var(--t-ease) both; }
+  .progress::before { content: ''; display: block; width: 18px; height: 18px; grid-row: 1 / span 2; flex: none;
+                      background: url("data:image/svg+xml,${encodeURIComponent(markSvg(18, undefined, { solid: true }))}") center / 18px 18px no-repeat; }
+  .progress-text { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .progress-track { position: relative; display: block; grid-column: 2; margin-top: 7px; height: 4px; border-radius: 999px;
+                    background: var(--t-line-2); overflow: hidden; }
+  .progress-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; border-radius: 999px; background: var(--t-accent);
+                   transition: width .35s var(--t-ease); }
+  .progress.is-indeterminate .progress-fill { width: 38%; transition: none;
+                   background: linear-gradient(90deg, var(--t-indigo-2), var(--t-accent));
+                   animation: t-progress-slide 1.15s cubic-bezier(.45,0,.3,1) infinite; }
+  @keyframes t-progress-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  @keyframes t-progress-slide { from { transform: translateX(-110%); } to { transform: translateX(275%); } }
+  @media (prefers-reduced-motion: reduce) {
+    .progress { animation: none; }
+    .progress.is-indeterminate .progress-fill { animation: none; width: 100%; opacity: .45; }
+  }
+
   /* ── Fallback panel: a fixed column over a dimmed, blurred backdrop ── */
   .overlay { position: fixed; inset: 0; z-index: 2147483646; background: rgba(9,11,21,.55);
              backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);

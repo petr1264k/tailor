@@ -142,7 +142,10 @@ function boot(): void {
         // Demo mode: the changes play top to bottom. Mode reads Tailored from the start so Show original can stop the run.
         mode = 'tailored'
         const shown = await playTailored(page, facts, ui, target, {
-          onStep: (label, i, n) => ui.setStatus(`${i + 1}/${n} · ${label}`),
+          onStep: (label, i, n) => {
+            ui.setStatus(`${i + 1}/${n} · ${label}`) // for the popup
+            ui.setProgress(i + 1, n, label) // the pill in the corner fills as the changes play
+          },
         })
         if (run !== tailorRuns) return
         if (!shown) {

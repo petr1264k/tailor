@@ -124,6 +124,13 @@ input[type='text'], input[type='search'], input[type='password'], select {
   transition: border-color var(--fast) var(--ease), box-shadow var(--fast) var(--ease);
 }
 input[type='text']:focus, input[type='search']:focus, input[type='password']:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+/* Selects draw their own chevron: Chrome's native one adds uneven inner padding and a wide gap before the arrow */
+select {
+  appearance: none; -webkit-appearance: none; cursor: pointer; padding: 8px 32px 8px 12px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%231f212f' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 11px center; background-size: 10px 6px;
+}
+select:disabled { cursor: default; opacity: 0.6; }
 input::placeholder { color: #a3a8b8; }
 input[type='checkbox'] { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; }
 

@@ -137,6 +137,8 @@ export function App() {
           <div className="panel">
             <span className="label">Status</span>
             <div className="status-line">{describeStatus(status)}</div>
+            {status.scorecard && <div className="hint">{status.scorecard}</div>}
+            {status.message && <div className={status.isError ? 'error' : 'hint'}>{status.message}</div>}
             {status.hasAgentHooks && <div className="hint">This site asks agents what you need. Sharing shows you the exact words first.</div>}
           </div>
         )}

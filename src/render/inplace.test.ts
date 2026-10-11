@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Fact, PageEdit, PageSegment, TailoredPage } from '@/types'
 import { collectSegments, resolveSegment } from '@/tailor/segments'
-import { mountTailorButton, playTailored, renderFromSite, renderTailored, showOriginal, showTailored, type RenderCallbacks, type TailorUi } from './index'
-import { foldTargets, markedElements, noteAnchor } from './inplace'
+import { mountTailorButton, playTailored, renderFromSite, renderReportSheet, renderTailored, showOriginal, showTailored, type RenderCallbacks, type TailorUi } from './index'
+import { appliedLabels, foldTargets, markedElements, noteAnchor } from './inplace'
 import { buildScorecard, countWords, measureSide, scorecardChip, scorecardLine, scorecardRows } from './scorecard'
 
 const ps5: Fact = {
@@ -93,23 +93,18 @@ describe('in-place edits', () => {
     expect(document.body.querySelector('style')).toBeNull()
   })
 
-  it('a hide folds the whole exclusive section (image included) and leaves a stub; Show/Hide report expand/collapse', () => {
-    const { onInteraction } = setup()
+  it('a hide moves the whole exclusive section (image included) to the bottom of its parent; nothing is hidden', () => {
+    setup()
     renderTailored(page([{ op: 'hide', ids: [byText('Loved'), byText('Thousands')], label: 'Customer praise', reason: 'you skip marketing' }]), [], ui!, target())
+    const main = document.querySelector('main')!
     const section = document.getElementById('praise')!
-    expect(section.style.getPropertyValue('display')).toBe('none')
-    expect(section.style.getPropertyPriority('display')).toBe('important')
-    const stub = hosts('tailor-fold')[0]!
-    expect(stub.nextElementSibling).toBe(section)
-    expect(inShadow(stub, '.label').textContent).toBe('Hidden: Customer praise — you skip marketing')
-    const toggle = inShadow<HTMLButtonElement>(stub, '.toggle')
-    toggle.click()
-    expect(section.style.getPropertyValue('display')).toBe('')
-    expect(onInteraction).toHaveBeenLastCalledWith({ kind: 'expand', blockType: 'hidden', factIds: [] })
-    expect(toggle.textContent).toBe('Hide')
-    toggle.click()
-    expect(section.style.getPropertyValue('display')).toBe('none')
-    expect(onInteraction).toHaveBeenLastCalledWith({ kind: 'collapse', blockType: 'hidden', factIds: [] })
+    expect(main.lastElementChild).toBe(section)
+    expect(section.hasAttribute('style')).toBe(false) // not display:none, not touched at all
+    expect(section.querySelector('img')).not.toBeNull()
+    expect(hosts('tailor-fold')).toHaveLength(0) // no stub, nothing of ours left where it stood
+    expect(appliedLabels(ui!)).toEqual(['Moved down: Customer praise · you skip marketing'])
+    showOriginal(ui!)
+    expect(section.nextElementSibling?.id).toBe('specs') // back between its original neighbours
   })
 
   it('foldTargets hides elements one by one when their common ancestor holds other segments', () => {
@@ -188,7 +183,7 @@ describe('in-place edits', () => {
     }
   })
 
-  it('a note anchored inside a hidden part sticks to the stub, not to the hidden section', () => {
+  it('a note anchored inside a moved-down part stays on it', () => {
     setup()
     renderTailored(
       page([
@@ -199,10 +194,9 @@ describe('in-place edits', () => {
       ui!,
       target(),
     )
-    const stub = hosts('tailor-fold')[0]!
-    const note = hosts('tailor-note')[0]!
-    expect(noteAnchor(note)).toBe(stub)
-    expect(document.getElementById('praise')!.contains(note)).toBe(false)
+    const praise = document.getElementById('praise')!
+    expect(document.querySelector('main')!.lastElementChild).toBe(praise)
+    expect(noteAnchor(hosts('tailor-note')[0]!)).toBe(praise.querySelector('p'))
   })
 
   it('Original puts every original node back exactly; Tailored re-applies instantly', () => {
@@ -233,7 +227,7 @@ describe('in-place edits', () => {
     showTailored(ui!)
     expect(document.querySelector('h1')!.textContent).toContain('New headline.')
     expect(hosts('tailor-note')).toHaveLength(1)
-    expect(hosts('tailor-fold')).toHaveLength(1)
+    expect(document.querySelector('main')!.lastElementChild!.id).toBe('praise')
     showOriginal(ui!)
     expect(document.querySelector('main')!.innerHTML).toBe(before)
   })
@@ -379,8 +373,11 @@ describe('in place: page map edits (promote, badge, region hide) and the scoreca
     expect(order('list')).toEqual(['c2', 'c1', 'c3'])
   })
 
-  it('tags a card with a badge inside its title, hides a region whole with a stub, and undoes both', () => {
-    const { ui, onInteraction } = setup(STORE)
+  it('tags a card with a badge inside its title, moves a region whole to the bottom, and undoes both', () => {
+    const { ui } = setup(STORE)
+    const member = document.getElementById('member') as HTMLElement
+    const parent = member.parentElement!
+    const orderBefore = [...parent.children].map((c) => c.id || c.tagName)
     renderTailored(
       page([
         { op: 'badge', id: 'i1', label: '45W: enough for your phone', factIds: ['f1'] },
@@ -393,16 +390,12 @@ describe('in place: page map edits (promote, badge, region hide) and the scoreca
     const badge = document.querySelector('#c1 h3 tailor-badge') as HTMLElement
     expect(badge.shadowRoot!.querySelector('.badge-label')!.textContent).toBe('45W: enough for your phone')
     expect(badge.shadowRoot!.querySelectorAll('tailor-why')).toHaveLength(1)
-    const member = document.getElementById('member') as HTMLElement
-    expect(member.style.display).toBe('none')
-    const fold = member.previousElementSibling as HTMLElement
-    expect(fold.tagName.toLowerCase()).toBe('tailor-fold')
-    ;(fold.shadowRoot!.querySelector('.toggle') as HTMLButtonElement).click()
-    expect(member.style.display).toBe('')
-    expect(onInteraction).toHaveBeenCalledWith({ kind: 'expand', blockType: 'hidden', factIds: [] })
-    showOriginal(ui)
-    expect(document.querySelector('tailor-badge, tailor-fold')).toBeNull()
+    expect(parent.lastElementChild).toBe(member) // moved down, still on the page
     expect(member.hasAttribute('style')).toBe(false)
+    expect(document.querySelector('tailor-fold')).toBeNull()
+    showOriginal(ui)
+    expect(document.querySelector('tailor-badge')).toBeNull()
+    expect([...parent.children].map((c) => c.id || c.tagName)).toEqual(orderBefore)
   })
 
   it('skips map edits whose element is gone and still applies the rest', () => {
@@ -460,7 +453,7 @@ describe('scorecard', () => {
       ['First thing marked for you', '3.6 screens down → first screen (3,240 px → 420 px)'],
       ['Marked for you on the first screen', '0 → 2 of 3'],
       ['Words on the page', '2,870 → 1,140'],
-      ['Changes', '1 moved up, 1 tagged, 1 hidden'],
+      ['Changes', '1 moved up, 1 tagged, 1 moved down'],
     ])
     const none = buildScorecard(page([]), { ...before, firstMatchTop: null, firstMatchScreens: null }, { ...after, firstMatchTop: null, firstMatchScreens: null }, 0, 900)
     expect(scorecardLine(none)).toBe('words 2,870 → 1,140')
@@ -478,7 +471,7 @@ describe('scorecard', () => {
     const nothing = buildScorecard(page([]), before, { ...before }, 3, 900)
     expect(scorecardChip(nothing)).toBe('')
     expect(scorecardLine(nothing)).toBe('')
-    expect(scorecardRows(nothing)[2]).toEqual(['Words on the page', '2,870 → 2,870']) // the popover keeps every row
+    expect(scorecardRows(nothing)[2]).toEqual(['Changes', 'none']) // an unchanged word count is no row at all
   })
 
   it('measureSide reads positions and visible words from the live page', () => {
@@ -512,13 +505,19 @@ describe('demo mode: the changes play top to bottom', () => {
     expect(shown).toBe(true)
     // Top to bottom: the headline, the list item, the praise section, the price line.
     expect(steps).toEqual([
-      '1/4 Rewriting: Maximize revenue from the demand you already…',
-      '2/4 Tagging: Works with your PS5',
-      '3/4 Folding: Customer praise',
+      '1/4 Rewrote: Maximize revenue from the demand you already have.',
+      '2/4 Tagged: Works with your PS5',
+      '3/4 Moved down: Customer praise · you skip marketing',
       '4/4 Note: Under your $1,500 budget.',
     ])
+    expect(appliedLabels(ui!)).toEqual([
+      'Rewrote: Maximize revenue from the demand you already have.',
+      'Moved down: Customer praise · you skip marketing',
+      'Note: Under your $1,500 budget.',
+      'Tagged: Works with your PS5',
+    ])
     expect(document.querySelector('h1')!.childNodes[0]?.textContent).toBe('Earn more from the visitors you already have.')
-    expect(document.getElementById('praise')!.style.getPropertyValue('display')).toBe('none')
+    expect(document.querySelector('main')!.lastElementChild!.id).toBe('praise')
     expect(hosts('tailor-note')).toHaveLength(1)
     expect(hosts('tailor-badge')).toHaveLength(1)
     expect(document.body.innerHTML).toBe(instant)
@@ -553,7 +552,7 @@ describe('demo mode: the changes play top to bottom', () => {
       t,
       { scroll: false, pace: 0, onStep: (label) => steps.push(label) },
     )
-    expect(steps).toEqual(['Moving up: Must-Have', 'Moving up: Charger B', 'Rewriting: Welcome to the store.'])
+    expect(steps).toEqual(['Moved up: Must-Have', 'Moved up: Charger B', 'Rewrote: Welcome to the store.'])
     expect(document.getElementById('hero')!.nextElementSibling?.id).toBe('shelf')
     expect(document.querySelector('li h3')!.textContent).toBe('Charger B')
   })
@@ -577,12 +576,44 @@ describe('demo mode: the changes play top to bottom', () => {
     expect(hosts('tailor-note')).toHaveLength(0)
     expect(onInteraction).not.toHaveBeenCalledWith(expect.objectContaining({ kind: 'toggle_original' })) // showOriginal, not the user's toggle
     showTailored(ui!)
-    expect(document.getElementById('praise')!.style.getPropertyValue('display')).toBe('none')
+    expect(document.querySelector('main')!.lastElementChild!.id).toBe('praise')
     expect(document.querySelector('h1')!.childNodes[0]?.textContent).toBe('Earn more from the visitors you already have.')
     expect(hosts('tailor-note')).toHaveLength(1)
     expect(hosts('tailor-badge')).toHaveLength(1)
     showOriginal(ui!)
     expect(document.querySelector('main')!.innerHTML).toBe(before)
+  })
+
+  it('the report sheet lists the numbers, the changes and the fact check; OK closes it', async () => {
+    setup()
+    const card = buildScorecard(
+      page(edits()),
+      { words: 2870, firstMatchTop: 3240, firstMatchScreens: 3.6, onFirstScreen: 0 },
+      { words: 1140, firstMatchTop: 120, firstMatchScreens: 0.1, onFirstScreen: 2 },
+      3,
+      900,
+    )
+    const closed = renderReportSheet(ui!, {
+      site: 'www.example.com',
+      card,
+      gate: { checked: 14, stripped: [{ blockIndex: 0, blockType: 'section', claim: '144 Hz', reason: 'not_on_page' }] },
+      changes: ['Moved up: Must-Have Picks', 'Folded: Customer praise'],
+    })
+    const sheet = ui!.root.querySelector('.sheet')!
+    expect(sheet.querySelector('.sheet-title')!.textContent).toBe('2 changes for you on this page')
+    expect(sheet.querySelector('.sheet-label')!.textContent).toBe('Tailored for you · www.example.com')
+    const rows = [...sheet.querySelectorAll('.report-rows tr')].map((tr) => [...tr.children].map((td) => td.textContent))
+    expect(rows[0]).toEqual(['First thing marked for you', '3.6 screens down → first screen (3,240 px → 120 px)'])
+    expect(rows[2]).toEqual(['Words on the page', '2,870 → 1,140'])
+    const items = [...sheet.querySelectorAll('.report-changes li')]
+    expect(items.map((li) => li.textContent)).toEqual(['Moved up: Must-Have Picks', 'Folded: Customer praise'])
+    expect(items[0]!.querySelector('b')!.textContent).toBe('Moved up:')
+    expect(sheet.querySelector('.report-gate')!.textContent).toContain('14 claims checked against this page · 1 stripped')
+    expect(sheet.querySelector('.report-gate .claim')!.textContent).toBe('144 Hz')
+    expect(ui!.root.querySelector<HTMLElement>('.bar')!.hidden).toBe(true) // nothing of ours stays on the page
+    ui!.root.querySelector<HTMLButtonElement>('.sheet-actions .primary')!.click()
+    await closed
+    expect(ui!.root.querySelector('.sheet')).toBeNull()
   })
 
   it('a page without edits falls back to the panel and resolves true', async () => {

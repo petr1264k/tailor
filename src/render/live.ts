@@ -300,6 +300,19 @@ export function scrollWindowTo(run: Run, top: number): Promise<void> {
   })
 }
 
+/**
+ * One pass down the page and back before the run: lazy images load and the site's own scroll reveals fire, so the
+ * changes play over a page that is all there instead of over blank placeholders. Ends at the top.
+ */
+export async function sweep(run: Run): Promise<void> {
+  const se = document.scrollingElement
+  if (!se || se.scrollHeight <= se.clientHeight + 1) return
+  await scrollWindowTo(run, se.scrollHeight)
+  await pause(run, 250)
+  await scrollWindowTo(run, 0)
+  await pause(run, 150)
+}
+
 /** Brings a change's element on screen: its top sits a bit above the middle, so the change happens where the eye is. */
 export function bringOnScreen(run: Run, el: Element | null): Promise<void> {
   if (!el || !el.isConnected || onScreen(el)) return Promise.resolve()
@@ -328,7 +341,7 @@ export function byDocumentOrder<T>(items: T[], target: (item: T) => Element | nu
 }
 
 /** "Rewriting: Four HDMI 2.1 ports support…" fits the bar. */
-export function shortLabel(text: string, max = 46): string {
+export function shortLabel(text: string, max = 110): string {
   const t = text.replace(/\s+/g, ' ').trim()
   return t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t
 }

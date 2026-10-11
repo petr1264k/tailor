@@ -233,6 +233,20 @@ export const PANEL_CSS = `
   .sheet-actions .primary:hover { background: var(--t-ink-2); }
   .sheet-actions .secondary { box-shadow: inset 0 0 0 1px var(--t-line); }
   .sheet-actions .secondary:hover { box-shadow: inset 0 0 0 1px #b9c5ea; }
+
+  /* ── Report sheet: what changed for you, the numbers code measured, the fact check; opens when the changes have
+        played (demo mode), OK closes it. Same sheet as consent, so the two read as one voice. ── */
+  .report-rows { width: 100%; border-collapse: collapse; font-size: 15px; margin: 0; }
+  .report-rows td { padding: 7px 0; border-top: 1px solid var(--t-line-2); vertical-align: top; }
+  .report-rows tr:first-child td { border-top: 0; }
+  .report-rows td:first-child { color: var(--t-muted); padding-right: 14px; width: 46%; }
+  .report-rows td:last-child { font-weight: 500; font-variant-numeric: tabular-nums; }
+  .report-changes { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; font-size: 14px; line-height: 1.35; }
+  .report-changes li { padding: 6px 10px; border: 1px solid var(--t-line-2); border-radius: 8px; overflow-wrap: anywhere; }
+  .report-changes b { font-weight: 500; color: var(--t-indigo); }
+  .report-gate { margin: 0; font-size: 15px; }
+  .report-gate ul { margin: 8px 0 0; padding-left: 1.2em; font-size: 14px; }
+  .report-gate .claim { text-decoration: line-through; font-weight: 600; }
 `
 
 /**

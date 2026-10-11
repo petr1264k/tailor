@@ -132,6 +132,11 @@ export interface ContentStatus {
   mode: 'original' | 'tailored' | 'loading'
   hasAgentHooks: boolean
   gate?: TailoredPage['gate']
+  /** The page's last status line (a demo step, an error, "Learned: …"); the page shows no bar, so the popup shows this. */
+  message?: string
+  isError?: boolean
+  /** The scorecard line measured on this page, e.g. "1st match 3.6 screens down → first screen · words 2,870 → 1,140". */
+  scorecard?: string
 }
 
 export async function sendToTab(tabId: number, cmd: ContentCommand): Promise<ContentStatus | undefined> {

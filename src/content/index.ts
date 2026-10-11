@@ -1,12 +1,14 @@
 /**
  * Content script entry. Runs in the page origin: no IndexedDB, no API keys, no model calls here.
- * Mounts the floating bar, extracts the page content (while the ORIGINAL page is visible, because the
+ * Mounts the (never shown) control host, extracts the page content (while the ORIGINAL page is visible, because the
  * gate checks claims against the rendered visible text), asks the background to tailor, renders the
  * result, and runs the share flow with consent (CONTEXT.txt §3.5, §3.7, §4).
  * By default this happens on its own: the page starts tailoring as soon as it has loaded and the edits land in
  * place the moment the run finishes (§3.5). The bar's Tailor button re-runs it; the popup can turn auto off.
- * In demo mode (on by default, §9) the edits PLAY: the window goes to the top and the page rebuilds itself change by
- * change down to the bottom, with motion, the bar narrating each step. Original stops the run; off = everything at once.
+ * In demo mode (on by default, §9) the edits PLAY: one pass down the page and back, then the page rebuilds itself
+ * change by change down to the bottom, with motion, ending back at the top on a report of what changed with the
+ * numbers (OK closes it). Show original (popup) stops the run; off = everything at once, no report.
+ * Nothing of ours stays on the page: the popup drives everything and reads the status from here.
  *
  * Imports stay light on purpose: '@/tailor/extract', '@/share/hooks' and '@/share/block' pull in no SDK
  * and no IndexedDB, so this bundle loads fast on every page.
@@ -20,22 +22,29 @@ import { siteProfileFor } from '@/sites'
 import { toFromSiteBlock } from '@/share/block'
 import { DEMO_FALLBACK_REPLY } from '@/share/fallback'
 import {
+  appliedLabels,
   buildScorecard,
+  displayHost,
   markedElements,
   measureSide,
   mountTailorButton,
   playTailored,
   renderConsentSheet,
   renderFromSite,
+  renderReportSheet,
   renderTailored,
+  scorecardLine,
   showOriginal,
   type InPlaceTarget,
+  type Scorecard,
   type TailorUi,
 } from '@/render'
 
 let current: TailoredPage | null = null
 let extracted: ExtractedPage | null = null
 let mode: ContentStatus['mode'] = 'original'
+/** The scorecard measured on the last tailored result, for the popup. */
+let lastCard: Scorecard | null = null
 /** Counts tailorNow calls: a run that finds a newer one started (Re-tailor during a playback) leaves the state to it. */
 let tailorRuns = 0
 
@@ -134,8 +143,9 @@ function boot(): void {
       showOriginal(ui)
       const marked = page.edits ? markedElements(page, target) : []
       const before = measureSide(document, marked)
-      if (settings.demoMode && page.edits?.length) {
-        // Demo mode: the changes play top to bottom. The bar reads Tailored from the start so Original can stop the run.
+      const demo = settings.demoMode && !!page.edits?.length
+      if (demo) {
+        // Demo mode: the changes play top to bottom. Mode reads Tailored from the start so Show original can stop the run.
         mode = 'tailored'
         const shown = await playTailored(page, facts, ui, target, {
           onStep: (label, i, n) => ui.setStatus(`${i + 1}/${n} · ${label}`),
@@ -150,9 +160,13 @@ function boot(): void {
         renderTailored(page, facts, ui, target)
       }
       const after = measureSide(document, marked)
-      ui.setScorecard(page.edits ? buildScorecard(page, before, after, marked.length, window.innerHeight) : null)
+      const card = page.edits ? buildScorecard(page, before, after, marked.length, window.innerHeight) : null
+      lastCard = card
+      ui.setScorecard(card)
       ui.setGateSummary(page.gate.checked, page.gate.stripped.length, page.gate.stripped)
       mode = 'tailored'
+      // Demo mode ends on the report: what changed, the numbers code measured, the fact check. OK closes it.
+      if (demo) void renderReportSheet(ui, { site: displayHost(url) || location.hostname, card, gate: page.gate, changes: appliedLabels(ui) })
     } catch (err) {
       if (run === tailorRuns) mode = previous === 'loading' ? 'original' : previous
       throw err
@@ -214,7 +228,16 @@ function boot(): void {
   })
 
   function status(): ContentStatus {
-    return { url, mode, hasAgentHooks: canShare, gate: current?.gate }
+    const s = ui.readStatus()
+    const line = lastCard ? scorecardLine(lastCard) : ''
+    return {
+      url,
+      mode,
+      hasAgentHooks: canShare,
+      ...(current ? { gate: current.gate } : {}),
+      ...(s.text && !s.isGate ? { message: s.text, isError: s.isError } : {}),
+      ...(line ? { scorecard: line } : {}),
+    }
   }
 
   chrome.runtime.onMessage.addListener((cmd: ContentCommand, _sender, sendResponse) => {

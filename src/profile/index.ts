@@ -8,11 +8,11 @@
  * Storage: StoredProfile rows in the 'profiles' store (src/archive/db.ts). Extension origin only
  * (background, popup, options page); the content script must go through `send('profile/get')`.
  */
-import type { Evidence, Fact, Profile, SourceSplit } from '@/types'
+import type { Evidence, Fact, OmittedItem, Profile, SourceSplit } from '@/types'
 import type { HandlerMap } from '@/messages'
 import { getDb, type StoredProfile } from '@/archive'
 import { getSettings } from '@/settings'
-import { ProfileFileSchema } from '@/schemas'
+import { OmittedListSchema, ProfileFileSchema } from '@/schemas'
 
 export const DEFAULT_PROFILE_ID = 'default'
 
@@ -72,12 +72,14 @@ export async function getProfile(profileId?: string): Promise<Profile> {
 /**
  * Saves and bumps `version`. The new version is max(stored, given) + 1 so versions only ever grow,
  * even if a stale copy is saved: the tailored cache is keyed by (profileId, version, url) and must never collide.
+ * The stored "Left out on purpose" list stays unless `opts.omitted` is passed (loadProfileFile replaces it).
  */
-export async function saveProfile(profile: Profile, profileId?: string): Promise<Profile> {
+export async function saveProfile(profile: Profile, profileId?: string, opts?: { omitted?: OmittedItem[] }): Promise<Profile> {
   const id = await resolveId(profileId)
   const db = await getDb()
   const tx = db.transaction('profiles', 'readwrite')
   const existing = await tx.store.get(id)
+  const omitted = opts ? opts.omitted : existing?.omitted
   const stored: StoredProfile = {
     id,
     name: existing?.name ?? defaultName(id),
@@ -86,6 +88,7 @@ export async function saveProfile(profile: Profile, profileId?: string): Promise
     shares: profile.shares,
     stats: profile.stats,
     updatedAt: new Date().toISOString(),
+    ...(omitted?.length ? { omitted } : {}),
   }
   await tx.store.put(stored)
   await tx.done
@@ -127,21 +130,49 @@ export async function deleteFact(factId: string, profileId?: string): Promise<Pr
  * by its path only, never its value.
  */
 export function parseProfileFile(json: unknown): Profile {
-  const wrapped = typeof json === 'object' && json !== null && !('facts' in json) && 'profile' in json
-  const r = ProfileFileSchema.safeParse(wrapped ? (json as { profile: unknown }).profile : json)
+  const r = ProfileFileSchema.safeParse(unwrapProfileFile(json))
   if (r.success) return r.data
-  const issue = r.error.issues[0]
-  const where = issue?.path.length ? issue.path.join('.') : 'top level'
-  throw new Error(`not a Tailor profile file (${where}: ${issue?.message ?? 'invalid'})`)
+  throw new Error(`not a Tailor profile file (${firstIssue(r.error.issues)})`)
+}
+
+function unwrapProfileFile(json: unknown): unknown {
+  const wrapped = typeof json === 'object' && json !== null && !('facts' in json) && 'profile' in json
+  return wrapped ? (json as { profile: unknown }).profile : json
+}
+
+function firstIssue(issues: { path: PropertyKey[]; message: string }[]): string {
+  const issue = issues[0]
+  return `${issue?.path.length ? issue.path.map(String).join('.') : 'top level'}: ${issue?.message ?? 'invalid'}`
 }
 
 /**
- * Replaces the facts, shares and stats of a profile with a checked profile file. The name stays; the version
- * bumps past both the stored and the file's version (saveProfile), so no tailored page from before is reused.
+ * The optional "Left out on purpose" list of a profile file: `omitted` next to the profile fields, or next to
+ * `profile` in the wrapped shape. Undefined when absent; throws (path only) when present but malformed.
+ */
+export function parseOmitted(json: unknown): OmittedItem[] | undefined {
+  const holders = [json, unwrapProfileFile(json)].filter((x): x is Record<string, unknown> => typeof x === 'object' && x !== null)
+  const raw = holders.find((h) => 'omitted' in h)?.omitted
+  if (raw === undefined) return undefined
+  const r = OmittedListSchema.safeParse(raw)
+  if (r.success) return r.data
+  throw new Error(`not a Tailor profile file (omitted.${firstIssue(r.error.issues)})`)
+}
+
+/**
+ * Replaces the facts, shares, stats and "Left out on purpose" list of a profile with a checked profile file. The name
+ * stays; the version bumps past both the stored and the file's version (saveProfile), so no tailored page from before
+ * is reused.
  */
 export async function loadProfileFile(json: unknown, profileId?: string): Promise<Profile> {
   const file = parseProfileFile(json)
-  return withProfileLock(() => saveProfile(file, profileId))
+  const omitted = parseOmitted(json)
+  return withProfileLock(() => saveProfile(file, profileId, { omitted }))
+}
+
+/** The stored "Left out on purpose" list ([] when the profile has none). */
+export async function getOmitted(profileId?: string): Promise<OmittedItem[]> {
+  const db = await getDb()
+  return (await db.get('profiles', await resolveId(profileId)))?.omitted ?? []
 }
 
 /** Facts that are live: not deleted. */

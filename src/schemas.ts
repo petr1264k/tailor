@@ -5,7 +5,7 @@
  * the type-level assertion at the bottom fails the build if they drift.
  */
 import { z } from 'zod'
-import type { Block, FactCategory, PageEdit, Profile } from './types'
+import type { Block, FactCategory, OmittedItem, PageEdit, Profile } from './types'
 import { FACT_CATEGORIES } from './types'
 
 export const FactCategorySchema = z.enum(FACT_CATEGORIES as [FactCategory, ...FactCategory[]])
@@ -109,6 +109,11 @@ export const ProfileFileSchema = z.object({
   stats: z.object({ conversations: z.number(), messages: z.number(), from: z.string(), to: z.string() }),
 })
 
+/** Optional "Left out on purpose" list a profile file may carry next to the profile (types.ts OmittedItem). */
+export const OmittedListSchema = z
+  .array(z.object({ category: z.string().min(1), count: z.number().int().nonnegative(), kinds: z.string() }))
+  .max(50)
+
 // ── Type-level lock between BlockSchema and the frozen Block type ──
 type SchemaBlock = z.infer<typeof BlockSchema>
 type MutuallyAssignable<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never
@@ -120,3 +125,5 @@ void _editSchemaMatchesType
 type SchemaProfile = z.infer<typeof ProfileFileSchema>
 const _profileSchemaMatchesFrozenType: MutuallyAssignable<SchemaProfile, Profile> = true
 void _profileSchemaMatchesFrozenType
+const _omittedSchemaMatchesType: MutuallyAssignable<z.infer<typeof OmittedListSchema>, OmittedItem[]> = true
+void _omittedSchemaMatchesType

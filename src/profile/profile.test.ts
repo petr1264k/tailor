@@ -8,9 +8,11 @@ import {
   activeFacts,
   deleteFact,
   formatEvidence,
+  getOmitted,
   getProfile,
   listProfiles,
   loadProfileFile,
+  parseOmitted,
   parseProfileFile,
   saveProfile,
   sourceSplit,
@@ -160,6 +162,24 @@ describe('parseProfileFile / loadProfileFile', () => {
     expect(loaded.stats.conversations).toBe(42)
     expect(loaded.version).toBe(7)
     expect((await listProfiles()).find((p) => p.id === 'mikhail')?.name).toBe('Mikhail')
+  })
+
+  const omitted = [{ category: 'finances', count: 8, kinds: 'tax, contract money terms' }]
+
+  it('reads an optional omitted list, bare or wrapped, and checks it', () => {
+    expect(parseOmitted(file())).toBeUndefined()
+    expect(parseOmitted({ ...file(), omitted })).toEqual(omitted)
+    expect(parseOmitted({ id: 'mik', profile: file(), omitted })).toEqual(omitted)
+    expect(() => parseOmitted({ ...file(), omitted: [{ category: 'names', count: -1, kinds: '' }] })).toThrow(/omitted\.0\.count/)
+  })
+
+  it('stores the omitted list, keeps it across edits, and replaces it on the next load', async () => {
+    await loadProfileFile({ ...file(), omitted }, 'mikhail')
+    expect(await getOmitted('mikhail')).toEqual(omitted)
+    await deleteFact('f1', 'mikhail')
+    expect(await getOmitted('mikhail')).toEqual(omitted)
+    await loadProfileFile(file(), 'mikhail')
+    expect(await getOmitted('mikhail')).toEqual([])
   })
 })
 

@@ -171,6 +171,17 @@ export interface Interaction {
 
 export type ChatOrigin = 'chatgpt' | 'claude'
 
+/**
+ * One "Left out on purpose" row: a kind of thing found in the chats and deliberately kept out of the profile.
+ * Only a hand-built profile file carries these (claude.profile.json); the extension's own extraction records none.
+ */
+export interface OmittedItem {
+  category: string
+  count: number
+  /** What the items were, in a few words: "retirement account, tax, contract money terms". Never the items themselves. */
+  kinds: string
+}
+
 /** One of the user's own messages, after import. Assistant messages are never stored. */
 export interface OwnMessage {
   id: string

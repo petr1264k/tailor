@@ -4,7 +4,7 @@
  * Stores: conversations (metadata), messages (own messages), profiles, interactions, tailored (cache).
  */
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
-import type { ChatOrigin, ImportedConversation, Interaction, OwnMessage, Profile, TailoredPage } from '@/types'
+import type { ChatOrigin, ImportedConversation, Interaction, OmittedItem, OwnMessage, Profile, TailoredPage } from '@/types'
 
 export type ConversationMeta = Omit<ImportedConversation, 'messages'> & { messageCount: number }
 
@@ -13,6 +13,8 @@ export interface StoredProfile extends Profile {
   /** Display name for the demo, e.g. "Mikhail" / "Petr". */
   name: string
   updatedAt: string
+  /** "Left out on purpose" rows from a loaded profile file (profile.loadProfileFile). Kept across saves. */
+  omitted?: OmittedItem[]
 }
 
 export interface CachedTailoredPage extends TailoredPage {

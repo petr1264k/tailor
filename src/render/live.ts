@@ -2,7 +2,8 @@
  * Live playback of in-place edits (demo mode, CONTEXT.txt §3.7, §9). Owner: Petr.
  *
  * The page rebuilds itself in front of the audience: one change at a time, top to bottom, each with its own motion,
- * while the window scrolls to keep the change on screen. This file holds the primitives; inplace.ts composes them per
+ * while the window scrolls to keep the change on screen. The window goes only where a change is: never a pass over the
+ * page first (on a long storefront that is a dash to the bottom and back). This file holds the primitives; inplace.ts composes them per
  * edit op (what a change DOES lives there, how it MOVES lives here).
  *
  * Every motion is a Web Animations API animation on the element itself, never an inline style: cancelling an animation
@@ -44,7 +45,8 @@ export const MOTION = {
   stepGap: 160,
   /** Changes already on screen start this far apart. */
   cascade: 170,
-  scrollCap: 1200,
+  /** Backstop for a smooth scroll that never settles; the real wait follows the distance (see scrollWindowTo). */
+  scrollCap: 2400,
 }
 
 const reducedMotion = (): boolean =>
@@ -283,7 +285,9 @@ export function scrollWindowTo(run: Run, top: number): Promise<void> {
   }
   window.scrollTo({ top: to, behavior: 'smooth' })
   return new Promise((resolve) => {
-    const cap = Math.min(MOTION.scrollCap, 350 + Math.abs(to - from) * 0.3)
+    // Chrome's smooth programmatic scroll runs about sqrt(px) / 60 s (1000 px ~ 0.5 s, 8000 px ~ 1.5 s); wait that long
+    // plus a margin before giving up, so a change never starts before the window has arrived.
+    const cap = Math.min(MOTION.scrollCap, 250 + Math.sqrt(Math.abs(to - from)) * 17)
     const start = performance.now()
     let last = from
     let still = 0
@@ -298,19 +302,6 @@ export function scrollWindowTo(run: Run, top: number): Promise<void> {
     }
     void nextFrame().then(tick)
   })
-}
-
-/**
- * One pass down the page and back before the run: lazy images load and the site's own scroll reveals fire, so the
- * changes play over a page that is all there instead of over blank placeholders. Ends at the top.
- */
-export async function sweep(run: Run): Promise<void> {
-  const se = document.scrollingElement
-  if (!se || se.scrollHeight <= se.clientHeight + 1) return
-  await scrollWindowTo(run, se.scrollHeight)
-  await pause(run, 250)
-  await scrollWindowTo(run, 0)
-  await pause(run, 150)
 }
 
 /** Brings a change's element on screen: its top sits a bit above the middle, so the change happens where the eye is. */

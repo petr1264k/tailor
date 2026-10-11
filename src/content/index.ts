@@ -5,9 +5,9 @@
  * result, and runs the share flow with consent (CONTEXT.txt §3.5, §3.7, §4).
  * By default this happens on its own: the page starts tailoring as soon as it has loaded and the edits land in
  * place the moment the run finishes (§3.5). The bar's Tailor button re-runs it; the popup can turn auto off.
- * In demo mode (on by default, §9) the edits PLAY: one pass down the page and back, then the page rebuilds itself
- * change by change down to the bottom, with motion, ending back at the top on a report of what changed with the
- * numbers (OK closes it). Show original (popup) stops the run; off = everything at once, no report.
+ * In demo mode (on by default, §9) the edits PLAY: the page rebuilds itself change by change down to the bottom,
+ * with motion, the window going only where a change is, ending back at the top on a report of what changed with
+ * the numbers (OK closes it). Show original (popup) stops the run; off = everything at once, no report.
  * Nothing of ours stays on the page: the popup drives everything and reads the status from here.
  *
  * Imports stay light on purpose: '@/tailor/extract', '@/share/hooks' and '@/share/block' pull in no SDK

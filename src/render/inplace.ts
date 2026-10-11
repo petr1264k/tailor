@@ -41,7 +41,6 @@ import {
   scrollWindowTo,
   shortLabel,
   startRun,
-  sweep,
   typeDuration,
   typewrite,
 } from './live'
@@ -791,8 +790,6 @@ export interface PlayOptions {
   onStep?: (label: string, index: number, total: number) => void
   /** Steer the window to each change (default true). Off when the caller keeps the viewport, and in tests. */
   scroll?: boolean
-  /** With scroll: one pass down the page and back first, so lazy content is there before the changes play (default true). */
-  warmUp?: boolean
   /** With scroll: end at the top of the page, on its first screen (default true). */
   returnToTop?: boolean
   /** Multiplier on every duration (default 1). 0 plays everything at once, still in order (tests). */
@@ -800,9 +797,10 @@ export interface PlayOptions {
 }
 
 /**
- * Plays the applied changes instead of showing them at once (demo mode): one pass down the page and back so lazy
- * content is loaded, then promotes fly to their new spot, then everything else plays top to bottom, each change
- * brought on screen first and changes already on screen cascading a beat apart; the window ends back at the top.
+ * Plays the applied changes instead of showing them at once (demo mode): promotes fly to their new spot first, then
+ * everything else plays top to bottom, each change brought on screen first and changes already on screen cascading a
+ * beat apart; the window ends back at the top. The window moves only to a change, never over the whole page first:
+ * on a long storefront (anker.com) a warm-up pass to the bottom and back read as a dash to the bottom of the page.
  * Resolves with whether the tailored view is on screen when it ends: true after a
  * full run, true when showInPlace cut it short, false when hideInPlace (Original) stopped it. A reader who scrolls
  * by hand keeps control of the viewport; the changes still play.
@@ -825,7 +823,6 @@ export async function playInPlace(ui: TailorUi, opts: PlayOptions = {}): Promise
     await a.step.play(run, () => turnOn(a, run))
   }
   try {
-    if (scroll) await (opts.warmUp === false ? scrollWindowTo(run, 0) : sweep(run))
     for (const a of state.applied.filter((x) => x.step.op === 'promote')) {
       if (run.cancelled) break
       if (scroll) await bringOnScreen(run, a.step.target())

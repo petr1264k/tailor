@@ -41,6 +41,23 @@ function parse(html: string): Document {
 }
 
 describe('extractPageContent', () => {
+  it('marks outside ads (an ad slot, a sponsored unit) in adIds and leaves the site\'s own sections out', () => {
+    const doc = parse(`<!doctype html><html><body><main>
+      <section id="own"><h2>News</h2><p>Our new store opens in Austin this fall, come and visit us there.</p></section>
+      <div id="slot" class="ad-slot"><p>Advertisement</p><iframe src="https://securepubads.g.doubleclick.net/gampad/ads"></iframe></div>
+      <section id="sp"><span>Sponsored</span><p>Try Acme VPN free for 30 days and browse without limits anywhere.</p></section>
+    </main></body></html>`)
+    const content = extractPageContent(doc, URL_)
+    const adRegions = (content.regions ?? []).filter((r) => content.adIds?.includes(r.id))
+    expect(adRegions.map((r) => r.title)).toEqual(['Advertisement', 'Try Acme VPN free for 30 days and browse without limits anywhere.'])
+    const own = (content.regions ?? []).find((r) => r.title === 'News')!
+    expect(content.adIds).not.toContain(own.id)
+    for (const s of own.segmentIds) expect(content.adIds).not.toContain(s)
+    const sponsoredSeg = content.segments.find((s) => s.text.startsWith('Try Acme'))!
+    expect(content.adIds).toContain(sponsoredSeg.id)
+    expect(extractPageContent(parse(TV_PAGE), URL_).adIds).toBeUndefined()
+  })
+
   beforeEach(() => {
     vi.mocked(readAgentHooks).mockReset().mockReturnValue(null)
   })
@@ -99,5 +116,29 @@ describe('extractPageContent', () => {
   it('attaches agent hooks when the page offers them', () => {
     vi.mocked(readAgentHooks).mockReturnValue({ markdownUrl: 'https://shop.example.com/tv/qn90d.md' })
     expect(extractPageContent(parse(TV_PAGE), URL_).agentHooks).toEqual({ markdownUrl: 'https://shop.example.com/tv/qn90d.md' })
+  })
+})
+
+describe('extractPageContent: storefronts keep their visible text', () => {
+  const tile = (name: string, price: string) => `<div class="tile"><a href="/p/${name.toLowerCase().replace(/\W+/g, '-')}"><h3>${name}</h3><p>Insulated, leakproof and built for the trail; the ${name} keeps drinks cold for hours.</p><span>${price}</span></a></div>`
+  const tiles = (n: number) => Array.from({ length: n }, (_, i) => tile(`Rambler ${i + 1}`, `$${20 + i}.00`)).join('')
+  const STORE = `<!doctype html><html><body><main>
+    <section><h1>Patch Perfect</h1><p>Get a free collectors patch with the purchase of select bags this week only.</p></section>
+    <section><h2>Offers</h2>${tiles(12)}</section>
+    <section><h2>New colors</h2>${tiles(12)}</section>
+    <section><h2>Why buy from us</h2><p>Free shipping, free returns and a warranty that keeps your gear in play for the long haul.</p></section>
+  </main></body></html>`
+
+  it('uses the visible text when Readability keeps less than a quarter of it (a storefront is not an article)', () => {
+    const c = extractPageContent(parse(STORE), 'https://store.example.com/')
+    expect(c.visibleText.length).toBeGreaterThan(2000)
+    // Whatever Readability picked here, `text` is the whole visible page, so every shelf's words reach relevance selection.
+    expect(c.text.length).toBeGreaterThanOrEqual(c.visibleText.length * 0.25)
+    expect(c.text).toContain('Rambler 12')
+    expect(c.text).toContain('Why buy from us')
+  })
+
+  it('still prefers Readability for an article-shaped page', () => {
+    expect(extractPageContent(parse(TV_PAGE), URL_).source).toBe('readability')
   })
 })

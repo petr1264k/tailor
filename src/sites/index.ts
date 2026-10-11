@@ -5,15 +5,19 @@
  */
 import type { SiteProfile } from './types'
 import { anker } from './anker'
+import { yeti } from './yeti'
+import { patagonia } from './patagonia'
 import { generic } from './generic'
 
 export type { SiteProfile, RoleRule, ItemRule, SitePolicy } from './types'
-export { anker, generic }
+export { anker, generic, patagonia, yeti }
 export { collectRegions, regionIds, regionOf, regionPromptLines, repeatedCards, MAX_REGIONS, MAX_ITEMS, MAX_ITEMS_PER_REGION } from './regions'
 export type { RegionMap } from './regions'
+export { outsideAdIds, createAdFinder, isOutsideAd, adContainerOf, isAdIframe, AD_SELECTOR, AD_LABEL_RE, AD_IFRAME_HOSTS } from './ads'
+export type { AdFinder } from './ads'
 
 /** Hand-written profiles, most specific host first. */
-export const SITE_PROFILES: readonly SiteProfile[] = [anker]
+export const SITE_PROFILES: readonly SiteProfile[] = [anker, yeti, patagonia]
 
 function hostOf(url: string): string {
   try {

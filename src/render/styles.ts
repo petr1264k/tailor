@@ -80,7 +80,7 @@ export const PANEL_CSS = `
   .bar[data-mode='tailored'] .view::after { content: 'Tailored'; display: inline-block; margin-left: 6px; }
   .bar[data-mode='original'] .view::before { margin-right: 6px; }
 
-  .bar .status { padding: 0 8px 0 4px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  .bar .status { padding: 0 8px 0 4px; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
                  font: 500 9.5px/1.3 var(--t-mono); letter-spacing: .04em; text-transform: uppercase; color: var(--t-muted);
                  background: none; border-radius: 0; cursor: default; }
   .bar .status:empty { display: none; }
@@ -233,6 +233,9 @@ export const PANEL_CSS = `
   .sheet-actions .primary:hover { background: var(--t-ink-2); }
   .sheet-actions .secondary { box-shadow: inset 0 0 0 1px var(--t-line); }
   .sheet-actions .secondary:hover { box-shadow: inset 0 0 0 1px #b9c5ea; }
+
+  /* ── Report sheet: what changed for you, the numbers code measured, the fact check; opens when the changes have
+        played (demo mode), OK closes it. Same sheet as consent, so the two read as one voice. ── */
 `
 
 /**
@@ -283,8 +286,16 @@ export const INPLACE_CSS = `
   .note::after { content: ''; position: absolute; right: 0; bottom: 0; width: 22px; height: 22px; z-index: -1;
                  background: linear-gradient(to top left, transparent 48%, rgba(31,33,47,.24) 50%, rgba(255,255,255,.65) 100%); }
   .note.is-warn { --paper-0: #ffe8dc; --paper: #ffc9ae; --paper-2: #ffb08a; --ink: #4a1d05; --label: #9a3d0d; }
-  .note.is-move { --paper-0: #e4fcec; --paper: #bdf2d0; --paper-2: #9ce6b8; --ink: #0f3d2b; --label: #0f7b4f; }
   .note.is-site { --paper-0: #e9f1ff; --paper: #cbdcff; --paper-2: #b2c9fb; --ink: #1f212f; --label: #2e4f9e; max-width: 460px; padding-right: 24px; }
+  /* A one-line note (the kind stuck on a product card): smaller paper, shorter tape, bolder line, so a dozen of them
+     read as quick marks on the cards and not as a dozen paragraphs. inplace.ts sets is-short / is-compact by text length. */
+  .sticky.is-compact { min-width: 184px; padding-top: 8px; }
+  .sticky.is-compact .tape { width: 62px; height: 17px; }
+  .note.is-short { max-width: 250px; font-size: 13.5px; line-height: 1.35; padding: 14px 34px 13px 14px; }
+  .note.is-short .kicker { font-size: 9.5px; margin-bottom: 4px; }
+  .note.is-short .text { font-weight: 500; letter-spacing: -.005em; }
+  .note.is-short .dismiss { top: 5px; right: 5px; width: 22px; height: 22px; line-height: 22px; font-size: 11px; }
+  .note.is-short .why-row { margin-top: 6px; gap: 4px; }
   .kicker { font: 600 10.5px/1.3 ${MONO}; letter-spacing: .12em; text-transform: uppercase; color: var(--label); margin-bottom: 7px; }
   .is-site .kicker { text-transform: none; letter-spacing: .02em; font-size: 12px; font-weight: 500; }
   .text { margin: 0; white-space: pre-line; overflow-wrap: anywhere; }

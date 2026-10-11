@@ -24,6 +24,7 @@ const MIN_GENERIC_CARD_CHARS = 24
 const MIN_CARDS = 3
 
 const HEADING_SELECTOR = 'h1, h2, h3, h4'
+const CAROUSEL_CLONE_SELECTOR = '.slick-cloned, .swiper-slide-duplicate'
 const PRICE_RE = /(?:[$€£]\s?\d[\d,]*(?:\.\d{2})?|\d[\d,]*(?:\.\d{2})?\s?(?:USD|EUR|GBP))/
 
 export interface RegionMap {
@@ -38,13 +39,36 @@ function textOf(el: Element | null, max: number): string {
   return el ? oneLine(segmentText(el)).slice(0, max) : ''
 }
 
+/**
+ * The region's title: its top-level visible heading (an h1 before any h2, ...), first in document order among equals.
+ * Document order alone picks a card's h3 or a photo caption's h5 when the real heading comes later in the markup
+ * (patagonia.com puts the hero's h5 caption before its h1).
+ */
 function firstHeadingText(el: Element): string {
+  let best = ''
+  let bestLevel = Infinity
   for (const h of Array.from(el.querySelectorAll(HEADING_SELECTOR))) {
-    if (!isVisible(h)) continue
+    const level = Number(h.tagName.slice(1))
+    if (level >= bestLevel || !isVisible(h)) continue
     const t = textOf(h, MAX_TITLE_CHARS)
-    if (t) return t
+    if (!t) continue
+    best = t
+    bestLevel = level
+    if (level === 1) break
   }
-  return ''
+  return best
+}
+
+/** The region's title: the profile's title selector when it has one and matches, else the top-level heading. */
+function regionTitle(el: Element, profile: SiteProfile): string {
+  if (profile.title) {
+    for (const t of queryAll(el, profile.title)) {
+      if (!isVisible(t)) continue
+      const text = textOf(t, MAX_TITLE_CHARS)
+      if (text) return text
+    }
+  }
+  return firstHeadingText(el)
 }
 
 function roleOf(el: Element, heading: string, profile: SiteProfile): RegionRole {
@@ -132,8 +156,8 @@ function readCard(card: Element, rule: ItemRule | null, baseUrl: string): ReadCa
   let href: string | undefined
   if (rule) {
     title = textOf(query(card, rule.title), MAX_TITLE_CHARS)
-    price = textOf(query(card, rule.price), 40) || undefined
-    wasPrice = textOf(query(card, rule.wasPrice), 40) || undefined
+    price = priceText(query(card, rule.price))
+    wasPrice = priceText(query(card, rule.wasPrice))
     detail = textOf(query(card, rule.detail), MAX_DETAIL_CHARS) || undefined
     href = absoluteHref(query(card, rule.link ?? 'a[href]'), baseUrl)
   } else {
@@ -155,11 +179,23 @@ function readCard(card: Element, rule: ItemRule | null, baseUrl: string): ReadCa
   return out
 }
 
+/**
+ * The price as the card shows it. Screen-reader words around the figure ("Price reduced from $37.00 to", yeti.com)
+ * are dropped: the figure is the page's own, the sentence is not what the eye sees.
+ */
+function priceText(el: Element | null): string | undefined {
+  const raw = textOf(el, 80)
+  if (!raw) return undefined
+  const m = PRICE_RE.exec(raw)
+  return (m ? m[0] : raw.slice(0, 40)).trim()
+}
+
 function cardsOf(region: Element, role: RegionRole, profile: SiteProfile, baseUrl: string): ReadCard[] {
   const rules = profile.items.filter((r) => !r.roles || r.roles.includes(role))
   let found: ReadCard[] = []
   for (const rule of rules) {
-    const cards = queryAll(region, rule.card).filter(isVisible)
+    // Carousel clones (slick, swiper) repeat the edge cards for the loop; the real card is the one the engine may move.
+    const cards = queryAll(region, rule.card).filter((c) => isVisible(c) && !c.closest(CAROUSEL_CLONE_SELECTOR))
     found = cards.map((c) => readCard(c, rule, baseUrl)).filter((c): c is ReadCard => c !== null)
     if (found.length) break
   }
@@ -228,12 +264,14 @@ export function collectRegions(doc: Document, segments: PageSegment[], elements:
   for (const el of candidates) {
     if (regions.length >= MAX_REGIONS) break
     const segs = segmentsIn.get(el) ?? []
-    const heading = firstHeadingText(el)
+    const heading = regionTitle(el, profile)
     const role = roleOf(el, heading, profile)
     const cards = items < MAX_ITEMS ? cardsOf(el, role, profile, baseUrl) : []
     if (!segs.length && !cards.length) continue
     const id = `r${regions.length + 1}`
-    const region: PageRegion = { id, role, title: heading || segs[0]?.text.slice(0, MAX_TITLE_CHARS) || '', segmentIds: segs.map((s) => s.id) }
+    // A region without a heading is named by its cards (a tile row: "Down, Fleece, Fly Fish …"), else by its first text.
+    const cardTitle = cards.length ? (cards.slice(0, 3).map((c) => c.title).join(', ') + (cards.length > 3 ? ' …' : '')).slice(0, MAX_TITLE_CHARS) : ''
+    const region: PageRegion = { id, role, title: heading || cardTitle || segs[0]?.text.slice(0, MAX_TITLE_CHARS) || '', segmentIds: segs.map((s) => s.id) }
     if (cards.length) {
       region.items = []
       for (const card of cards) {

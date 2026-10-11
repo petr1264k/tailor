@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Fact, PageEdit, PageSegment, TailoredPage } from '@/types'
 import { collectSegments, resolveSegment } from '@/tailor/segments'
-import { mountTailorButton, renderFromSite, renderTailored, showOriginal, showTailored, type RenderCallbacks, type TailorUi } from './index'
-import { foldTargets, markedElements, noteAnchor } from './inplace'
+import { mountTailorButton, playTailored, renderFromSite, renderTailored, showOriginal, showTailored, type RenderCallbacks, type TailorUi } from './index'
+import { appliedLabels, markedElements, noteAnchor } from './inplace'
 import { buildScorecard, countWords, measureSide, scorecardChip, scorecardLine, scorecardRows } from './scorecard'
 
 const ps5: Fact = {
@@ -93,33 +93,25 @@ describe('in-place edits', () => {
     expect(document.body.querySelector('style')).toBeNull()
   })
 
-  it('a hide folds the whole exclusive section (image included) and leaves a stub; Show/Hide report expand/collapse', () => {
-    const { onInteraction } = setup()
+  it('a hide that names elements moves nothing: sections stay where they are and nothing is hidden', () => {
+    setup()
+    const before = document.querySelector('main')!.innerHTML
     renderTailored(page([{ op: 'hide', ids: [byText('Loved'), byText('Thousands')], label: 'Customer praise', reason: 'you skip marketing' }]), [], ui!, target())
     const section = document.getElementById('praise')!
-    expect(section.style.getPropertyValue('display')).toBe('none')
-    expect(section.style.getPropertyPriority('display')).toBe('important')
-    const stub = hosts('tailor-fold')[0]!
-    expect(stub.nextElementSibling).toBe(section)
-    expect(inShadow(stub, '.label').textContent).toBe('Hidden: Customer praise — you skip marketing')
-    const toggle = inShadow<HTMLButtonElement>(stub, '.toggle')
-    toggle.click()
-    expect(section.style.getPropertyValue('display')).toBe('')
-    expect(onInteraction).toHaveBeenLastCalledWith({ kind: 'expand', blockType: 'hidden', factIds: [] })
-    expect(toggle.textContent).toBe('Hide')
-    toggle.click()
-    expect(section.style.getPropertyValue('display')).toBe('none')
-    expect(onInteraction).toHaveBeenLastCalledWith({ kind: 'collapse', blockType: 'hidden', factIds: [] })
+    expect(section.nextElementSibling?.id).toBe('specs') // where it was
+    expect(section.hasAttribute('style')).toBe(false) // not display:none, not touched at all
+    expect(hosts('tailor-fold')).toHaveLength(0)
+    expect(appliedLabels(ui!)).toEqual([]) // not a change, not a step
+    expect(document.querySelector('main')!.innerHTML).toBe(before)
   })
 
-  it('foldTargets hides elements one by one when their common ancestor holds other segments', () => {
-    setup()
-    const intro = document.getElementById('intro')!
-    const specs = document.getElementById('specs')!
-    const all = segments.map((s) => elements.get(s.id)!)
-    expect(foldTargets([intro, specs], all)).toEqual([intro, specs])
-    const praise = [elements.get(byText('Loved'))!, elements.get(byText('Thousands'))!]
-    expect(foldTargets(praise, all)).toEqual([document.getElementById('praise')])
+  it('an outside ad that is a section (decided by code) stays where it is too: never display:none, never moved', () => {
+    setup(`<main><h1>Title here</h1><p id="body">Real content here.</p><div id="ad" class="sponsored"><p>Sponsored: buy the thing today.</p></div><p id="last">Last paragraph here.</p></main>`)
+    renderTailored(page([{ op: 'hide', ids: [byText('Sponsored')], label: 'Sponsored unit', reason: 'an outside ad' }]), [], ui!, target())
+    const ad = document.getElementById('ad') as HTMLElement
+    expect(ad.hasAttribute('style')).toBe(false)
+    expect(ad.nextElementSibling?.id).toBe('last')
+    expect(appliedLabels(ui!)).toEqual([])
   })
 
   it('a note is stuck on its anchor from the overlay; a note on a list item sticks to the list; ✕ reports ignore', () => {
@@ -141,6 +133,8 @@ describe('in-place edits', () => {
     expect(document.getElementById('intro')!.nextElementSibling?.id).toBe('list') // the page's own order is untouched
     expect(inShadow(notes[0]!, '.kicker').textContent).toBe('For you')
     expect(inShadow(notes[0]!, '.text').textContent).toBe('Works with your PS5 at 120Hz.')
+    expect(inShadow(notes[0]!, '.note').classList.contains('is-short')).toBe(true) // one line: compact paper
+    expect(inShadow(notes[0]!, '.sticky').classList.contains('is-compact')).toBe(true)
     expect(inShadow(notes[1]!, '.note').classList.contains('is-warn')).toBe(true)
     expect(inShadow(notes[1]!, '.kicker').textContent).toBe('Heads up')
     expect(inShadow(notes[0]!, 'tailor-why')).toBeTruthy()
@@ -188,7 +182,7 @@ describe('in-place edits', () => {
     }
   })
 
-  it('a note anchored inside a hidden part sticks to the stub, not to the hidden section', () => {
+  it('a note anchored in a section a hide names stays on it; the section stays put', () => {
     setup()
     renderTailored(
       page([
@@ -199,10 +193,9 @@ describe('in-place edits', () => {
       ui!,
       target(),
     )
-    const stub = hosts('tailor-fold')[0]!
-    const note = hosts('tailor-note')[0]!
-    expect(noteAnchor(note)).toBe(stub)
-    expect(document.getElementById('praise')!.contains(note)).toBe(false)
+    const praise = document.getElementById('praise')!
+    expect(praise.nextElementSibling?.id).toBe('specs')
+    expect(noteAnchor(hosts('tailor-note')[0]!)).toBe(praise.querySelector('p'))
   })
 
   it('Original puts every original node back exactly; Tailored re-applies instantly', () => {
@@ -233,7 +226,7 @@ describe('in-place edits', () => {
     showTailored(ui!)
     expect(document.querySelector('h1')!.textContent).toContain('New headline.')
     expect(hosts('tailor-note')).toHaveLength(1)
-    expect(hosts('tailor-fold')).toHaveLength(1)
+    expect(document.getElementById('praise')!.nextElementSibling?.id).toBe('specs') // a hide of elements moves nothing
     showOriginal(ui!)
     expect(document.querySelector('main')!.innerHTML).toBe(before)
   })
@@ -342,11 +335,11 @@ describe('in place: page map edits (promote, badge, region hide) and the scoreca
     { id: 'r4', role: 'membership' as const, title: 'Become a member today', segmentIds: [] },
   ]
   const byId: Record<string, string> = { r1: 'hero', r2: 'stats', r3: 'shelf', r4: 'member', i1: 'c1', i2: 'c2', i3: 'c3' }
-  const mapTarget = () => ({ ...target(), regions, resolveRegion: (id: string) => document.getElementById(byId[id] ?? '') , promoteAfterRole: 'hero' as const })
+  const mapTarget = () => ({ ...target(), regions, resolveRegion: (id: string) => document.getElementById(byId[id] ?? '') })
   const order = (parent: string) => Array.from(document.getElementById(parent)!.children).map((c) => c.id || c.tagName.toLowerCase()).filter((x) => !x.startsWith('tailor'))
   const wrapOrder = () => Array.from(document.querySelector('.wrap')!.children).map((c) => c.id || c.tagName.toLowerCase())
 
-  it('promotes a region to just after the hero run and a card to the front of its list, with an exact undo', () => {
+  it('promotes cards to the front of their list in the order given; a promote naming a region moves nothing; exact undo', () => {
     const { ui } = setup(STORE)
     const originalWrap = wrapOrder()
     const originalList = order('list')
@@ -354,20 +347,19 @@ describe('in place: page map edits (promote, badge, region hide) and the scoreca
       page([
         { op: 'promote', id: 'r3', reason: 'Power banks for your trips come first.', factIds: ['f1'] },
         { op: 'promote', id: 'i2', reason: 'Enough for your MacBook Pro.', factIds: ['f1'] },
+        { op: 'promote', id: 'i3', reason: 'Six ports for your desk.', factIds: ['f1'] },
       ]),
       [ps5],
       ui,
       mapTarget(),
     )
-    expect(wrapOrder()).toEqual(['hero', 'shelf', 'stats', 'member']) // the strip is in the overlay, not in the wrap
-    const strip = hosts('tailor-note')[0]!
-    expect(noteAnchor(strip)?.id).toBe('shelf')
-    expect(strip.shadowRoot!.querySelector('.kicker')!.textContent).toBe('Moved up for you')
-    expect(strip.shadowRoot!.querySelector('.text')!.textContent).toBe('Power banks for your trips come first.')
-    expect(order('list')).toEqual(['c2', 'c1', 'c3'])
+    expect(wrapOrder()).toEqual(originalWrap) // the shelf stays where it is
+    expect(hosts('tailor-note')).toHaveLength(0) // no "moved up" sticky for a section that did not move
+    expect(order('list')).toEqual(['c2', 'c3', 'c1'])
     const badge = document.querySelector('#c2 h3 tailor-badge') as HTMLElement
     expect(badge.shadowRoot!.querySelector('.badge-kicker')!.textContent).toBe('Moved up for you')
     expect(badge.shadowRoot!.querySelector('.badge-label')!.textContent).toBe('Enough for your MacBook Pro.')
+    expect(appliedLabels(ui).map((l) => l.split(':')[0])).toEqual(['Moved up', 'Moved up']) // the region promote is not a step
 
     showOriginal(ui)
     expect(wrapOrder()).toEqual(originalWrap)
@@ -375,16 +367,17 @@ describe('in place: page map edits (promote, badge, region hide) and the scoreca
     expect(document.querySelector('tailor-note, tailor-badge')).toBeNull()
 
     showTailored(ui)
-    expect(wrapOrder()).toEqual(['hero', 'shelf', 'stats', 'member'])
-    expect(order('list')).toEqual(['c2', 'c1', 'c3'])
+    expect(order('list')).toEqual(['c2', 'c3', 'c1'])
   })
 
-  it('tags a card with a badge inside its title, hides a region whole with a stub, and undoes both', () => {
-    const { ui, onInteraction } = setup(STORE)
+  it('tags a card with a badge inside its title, moves a hidden card to the back of its list, leaves a hidden region where it is, and undoes all', () => {
+    const { ui } = setup(STORE)
+    const orderBefore = wrapOrder()
+    const listBefore = order('list')
     renderTailored(
       page([
         { op: 'badge', id: 'i1', label: '45W: enough for your phone', factIds: ['f1'] },
-        { op: 'hide', ids: ['r4'], label: 'Membership pitch', reason: 'You buy, you do not join.' },
+        { op: 'hide', ids: ['r4', 'i1'], label: 'Membership pitch and the small charger', reason: 'You buy, you do not join.' },
       ]),
       [ps5],
       ui,
@@ -393,16 +386,16 @@ describe('in place: page map edits (promote, badge, region hide) and the scoreca
     const badge = document.querySelector('#c1 h3 tailor-badge') as HTMLElement
     expect(badge.shadowRoot!.querySelector('.badge-label')!.textContent).toBe('45W: enough for your phone')
     expect(badge.shadowRoot!.querySelectorAll('tailor-why')).toHaveLength(1)
-    const member = document.getElementById('member') as HTMLElement
-    expect(member.style.display).toBe('none')
-    const fold = member.previousElementSibling as HTMLElement
-    expect(fold.tagName.toLowerCase()).toBe('tailor-fold')
-    ;(fold.shadowRoot!.querySelector('.toggle') as HTMLButtonElement).click()
-    expect(member.style.display).toBe('')
-    expect(onInteraction).toHaveBeenCalledWith({ kind: 'expand', blockType: 'hidden', factIds: [] })
+    expect(wrapOrder()).toEqual(orderBefore) // the membership section stays where it is
+    expect(order('list')).toEqual(['c2', 'c3', 'c1']) // the card went to the back of its own list
+    expect(document.getElementById('member')!.hasAttribute('style')).toBe(false)
+    expect(document.getElementById('c1')!.hasAttribute('style')).toBe(false)
+    expect(document.querySelector('tailor-fold')).toBeNull()
+    expect(appliedLabels(ui).filter((l) => l.startsWith('Moved down'))).toHaveLength(1)
     showOriginal(ui)
-    expect(document.querySelector('tailor-badge, tailor-fold')).toBeNull()
-    expect(member.hasAttribute('style')).toBe(false)
+    expect(document.querySelector('tailor-badge')).toBeNull()
+    expect(order('list')).toEqual(listBefore)
+    expect(wrapOrder()).toEqual(orderBefore)
   })
 
   it('skips map edits whose element is gone and still applies the rest', () => {
@@ -421,7 +414,7 @@ describe('in place: page map edits (promote, badge, region hide) and the scoreca
     expect(document.querySelectorAll('tailor-badge')).toHaveLength(1)
   })
 
-  it('markedElements lists promote and badge targets and note anchors once each, in edit order', () => {
+  it('markedElements lists promoted cards, badge targets and note anchors once each, in edit order; a region promote marks nothing', () => {
     setup(STORE)
     const marked = markedElements(
       page([
@@ -433,7 +426,7 @@ describe('in place: page map edits (promote, badge, region hide) and the scoreca
       ]),
       mapTarget(),
     )
-    expect(marked.map((e) => e.id || e.tagName.toLowerCase())).toEqual(['shelf', 'c2', 'p'])
+    expect(marked.map((e) => e.id || e.tagName.toLowerCase())).toEqual(['c2', 'p'])
   })
 })
 
@@ -460,7 +453,7 @@ describe('scorecard', () => {
       ['First thing marked for you', '3.6 screens down → first screen (3,240 px → 420 px)'],
       ['Marked for you on the first screen', '0 → 2 of 3'],
       ['Words on the page', '2,870 → 1,140'],
-      ['Changes', '1 moved up, 1 tagged, 1 hidden'],
+      ['Changes', '1 moved up, 1 tagged, 1 moved down'],
     ])
     const none = buildScorecard(page([]), { ...before, firstMatchTop: null, firstMatchScreens: null }, { ...after, firstMatchTop: null, firstMatchScreens: null }, 0, 900)
     expect(scorecardLine(none)).toBe('words 2,870 → 1,140')
@@ -478,7 +471,7 @@ describe('scorecard', () => {
     const nothing = buildScorecard(page([]), before, { ...before }, 3, 900)
     expect(scorecardChip(nothing)).toBe('')
     expect(scorecardLine(nothing)).toBe('')
-    expect(scorecardRows(nothing)[2]).toEqual(['Words on the page', '2,870 → 2,870']) // the popover keeps every row
+    expect(scorecardRows(nothing)[2]).toEqual(['Changes', 'none']) // an unchanged word count is no row at all
   })
 
   it('measureSide reads positions and visible words from the live page', () => {
@@ -487,5 +480,118 @@ describe('scorecard', () => {
     expect(side.words).toBe(3)
     expect(side.firstMatchTop).toBe(0)
     expect(side.onFirstScreen).toBe(1)
+  })
+})
+
+describe('demo mode: the changes play top to bottom', () => {
+  const edits = (): PageEdit[] => [
+    { op: 'note', after: byText('Price'), text: 'Under your $1,500 budget.', factIds: ['f1'] },
+    { op: 'hide', ids: [byText('Loved'), byText('Thousands')], label: 'Customer praise', reason: 'you skip marketing' },
+    { op: 'rewrite', id: byText('Maximize'), text: 'Earn more from the visitors you already have.', factIds: ['f2'] },
+    { op: 'badge', id: byText('Plug in'), label: 'Works with your PS5', factIds: ['f1'] },
+  ]
+
+  it('plays every change in document order, narrates each step, and ends exactly like the instant render', async () => {
+    setup()
+    renderTailored(page(edits()), [ps5, simple], ui!, target())
+    const instant = document.body.innerHTML
+    showOriginal(ui!)
+    const steps: string[] = []
+    const shown = await playTailored(page(edits()), [ps5, simple], ui!, target(), {
+      scroll: false,
+      pace: 0,
+      onStep: (label, i, n) => steps.push(`${i + 1}/${n} ${label}`),
+    })
+    expect(shown).toBe(true)
+    // Top to bottom: the headline, the list item, the price line. The hide of elements moves nothing and is not a step.
+    expect(steps).toEqual([
+      '1/3 Rewrote: Maximize revenue from the demand you already have.',
+      '2/3 Tagged: Works with your PS5',
+      '3/3 Note: Under your $1,500 budget.',
+    ])
+    expect(appliedLabels(ui!)).toEqual([
+      'Rewrote: Maximize revenue from the demand you already have.',
+      'Note: Under your $1,500 budget.',
+      'Tagged: Works with your PS5',
+    ])
+    expect(document.querySelector('h1')!.childNodes[0]?.textContent).toBe('Earn more from the visitors you already have.')
+    expect(document.getElementById('praise')!.nextElementSibling?.id).toBe('specs') // a hide of elements moves nothing
+    expect(hosts('tailor-note')).toHaveLength(1)
+    expect(hosts('tailor-badge')).toHaveLength(1)
+    expect(document.body.innerHTML).toBe(instant)
+  })
+
+  it('promoted cards play first, before the rest of the page; a promote naming a region plays nothing', async () => {
+    setup(`<main><section id="hero"><h1>Hero</h1><p>Welcome to the store.</p></section>
+      <section id="cats"><h2>Categories</h2><p>Browse by room.</p></section>
+      <section id="shelf"><h2>Must-Have</h2><ul><li><h3>Charger A</h3><p>65W, $39</p></li><li><h3>Charger B</h3><p>100W, $59</p></li></ul></section></main>`)
+    const regions = [
+      { id: 'r1', role: 'hero' as const, title: 'Hero', segmentIds: [] },
+      { id: 'r2', role: 'categories' as const, title: 'Categories', segmentIds: [] },
+      { id: 'r3', role: 'products' as const, title: 'Must-Have', segmentIds: [], items: [{ id: 'i1', title: 'Charger A', segmentIds: [] }, { id: 'i2', title: 'Charger B', segmentIds: [] }] },
+    ]
+    const byId: Record<string, Element> = {
+      r1: document.getElementById('hero')!,
+      r2: document.getElementById('cats')!,
+      r3: document.getElementById('shelf')!,
+      i1: document.querySelectorAll('li')[0]!,
+      i2: document.querySelectorAll('li')[1]!,
+    }
+    const t = { ...target(), regions, resolveRegion: (id: string) => byId[id] ?? null }
+    const steps: string[] = []
+    await playTailored(
+      page([
+        { op: 'rewrite', id: byText('Welcome'), text: 'Welcome back.' },
+        { op: 'promote', id: 'r3', reason: 'you asked about chargers', factIds: ['f1'] },
+        { op: 'promote', id: 'i2', reason: '100W fits your laptop', factIds: ['f1'] },
+      ]),
+      [ps5],
+      ui!,
+      t,
+      { scroll: false, pace: 0, onStep: (label) => steps.push(label) },
+    )
+    expect(steps).toEqual(['Moved up: Charger B', 'Rewrote: Welcome to the store.'])
+    expect(document.getElementById('hero')!.nextElementSibling?.id).toBe('cats') // the shelf stays where it is
+    expect(document.querySelector('li h3')!.textContent).toBe('Charger B')
+  })
+
+  it('Original mid-run stops the playback and puts everything back; Tailored then lands at once', async () => {
+    const { onInteraction } = setup()
+    const before = document.querySelector('main')!.innerHTML
+    const steps: string[] = []
+    const shown = await playTailored(page(edits()), [ps5, simple], ui!, target(), {
+      scroll: false,
+      pace: 0,
+      onStep: (label) => {
+        steps.push(label)
+        if (steps.length === 2) showOriginal(ui!) // the user flips to Original while the second change plays
+      },
+    })
+    expect(shown).toBe(false)
+    expect(steps).toHaveLength(2) // the run stopped: nothing after the step that was playing
+    expect(document.querySelector('main')!.innerHTML).toBe(before) // the first change undone, the later ones never applied
+    expect(document.getElementById('specs')!.style.display).toBe('flex') // an edit that never played left no trace
+    expect(hosts('tailor-note')).toHaveLength(0)
+    expect(onInteraction).not.toHaveBeenCalledWith(expect.objectContaining({ kind: 'toggle_original' })) // showOriginal, not the user's toggle
+    showTailored(ui!)
+    expect(document.getElementById('praise')!.nextElementSibling?.id).toBe('specs') // a hide of elements moves nothing
+    expect(document.querySelector('h1')!.childNodes[0]?.textContent).toBe('Earn more from the visitors you already have.')
+    expect(hosts('tailor-note')).toHaveLength(1)
+    expect(hosts('tailor-badge')).toHaveLength(1)
+    showOriginal(ui!)
+    expect(document.querySelector('main')!.innerHTML).toBe(before)
+  })
+
+  it('nothing of ours stays on the page: the bar mounts hidden and no sheet opens on its own', () => {
+    setup()
+    expect(ui!.root.querySelector<HTMLElement>('.bar')!.hidden).toBe(true)
+    expect(ui!.root.querySelector('.sheet')).toBeNull()
+  })
+
+  it('a page without edits falls back to the panel and resolves true', async () => {
+    setup()
+    const shown = await playTailored({ ...page([]), edits: undefined, blocks: [{ type: 'summary', text: 'Hi' }] }, [], ui!, target(), { scroll: false, pace: 0 })
+    expect(shown).toBe(true)
+    expect(ui!.root.querySelector('.panel')).toBeTruthy()
   })
 })

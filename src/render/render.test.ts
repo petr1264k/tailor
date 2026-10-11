@@ -142,7 +142,7 @@ describe('renderTailored', () => {
     expect(section!.querySelector('h3')?.textContent).toBe('Specs')
     expect(section!.classList.contains('is-collapsed')).toBe(false)
     expect(section!.querySelector('.toggle')).toBeNull()
-    expect(hidden!.querySelector('.row .text')?.textContent).toBe('Hidden: Marketing — you skip marketing copy')
+    expect(hidden!.querySelector('.row .text')?.textContent).toBe('Hidden: Marketing') // the reason is never shown
     expect(hidden!.classList.contains('is-collapsed')).toBe(true)
     const a = cta!.querySelector('a')!
     expect(a.textContent).toBe('Buy now')
@@ -374,7 +374,7 @@ describe('pure helpers', () => {
       '1. Plug in the PS5\n2. Turn on Game Mode',
       'This is over your budget.',
       'Specs\nShort specs text.',
-      'Hidden: Marketing — you skip marketing copy',
+      'Hidden: Marketing',
       'Buy now',
       'We ship in 2 weeks.',
     ]

@@ -3,8 +3,10 @@
  * after the edits, at the same scroll position: how far down the first thing marked for this person sits, how many
  * marked things are on the first screen, and how many words the page shows. Pure functions apart from reading layout.
  *
- * "First match" = the first element the tailored page marks for this person (a promoted region or card, a badge, a
- * note's anchor), in document order of the ORIGINAL page. Its position is where a reader would have had to scroll to.
+ * "First match" = the first element the tailored page marks for this person (a promoted card, a badge, a note's
+ * anchor), in document order of the ORIGINAL page. Its position is where a reader would have had to scroll to.
+ * Nothing is hidden (a hide moves a card to the back of its list), so the words row shows only when a rewrite changed
+ * the count.
  */
 import type { TailoredPage } from '@/types'
 import { isVisible } from '@/tailor/segments'
@@ -125,13 +127,13 @@ export function scorecardRows(card: Scorecard): Array<[string, string]> {
     rows.push(['First thing marked for you', `${screensLabel(card.before)} → ${screensLabel(card.after)}${card.before.firstMatchTop !== null && card.after.firstMatchTop !== null ? ` (${fmt(card.before.firstMatchTop)} px → ${fmt(card.after.firstMatchTop)} px)` : ''}`])
     rows.push(['Marked for you on the first screen', `${card.before.onFirstScreen} → ${card.after.onFirstScreen} of ${card.marked}`])
   }
-  rows.push(['Words on the page', `${fmt(card.before.words)} → ${fmt(card.after.words)}`])
+  if (wordsChanged(card)) rows.push(['Words on the page', `${fmt(card.before.words)} → ${fmt(card.after.words)}`])
   const changes: string[] = []
   if (card.promoted) changes.push(`${card.promoted} moved up`)
   if (card.badges) changes.push(`${card.badges} tagged`)
-  if (card.hidden) changes.push(`${card.hidden} hidden`)
-  if (card.notes) changes.push(`${card.notes} notes`)
-  if (card.warnings) changes.push(`${card.warnings} warnings`)
+  if (card.hidden) changes.push(`${card.hidden} moved down`)
+  if (card.notes) changes.push(`${card.notes} ${card.notes === 1 ? 'note' : 'notes'}`)
+  if (card.warnings) changes.push(`${card.warnings} ${card.warnings === 1 ? 'warning' : 'warnings'}`)
   if (card.rewrites) changes.push(`${card.rewrites} rewritten`)
   rows.push(['Changes', changes.join(', ') || 'none'])
   return rows

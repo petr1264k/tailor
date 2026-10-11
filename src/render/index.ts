@@ -1,8 +1,10 @@
 /**
  * Render in place (CONTEXT.txt §3.7). Owner: Petr.
  *
- * Plain DOM inside a shadow root so the site's CSS never clashes. A floating Original ↔ Tailored switch.
- * Every change has a "why" chip that opens the exact quote from the user's chats.
+ * Plain DOM inside a shadow root so the site's CSS never clashes. Nothing of ours stays on the page: the control bar
+ * exists for the popup and the tests but is never shown (Petr, Oct 10: no always-on element); Original ↔ Tailored
+ * is the popup's. Every change has a "why" chip that opens the exact quote from the user's chats. When the changes
+ * have played (demo mode) nothing opens: the numbers code measured reach the popup through the status.
  * Interactions (expand, collapse, toggle_original, open_why, ignore, dwell) are reported through `onInteraction`.
  *
  * Files: styles.ts (PANEL_CSS, restyle there), blocks.ts (one renderer per Block type + pure helpers), this file
@@ -15,6 +17,7 @@
  *    The site keeps its look. Original ↔ Tailored puts the original nodes back.
  *  - PANEL (fallback): pages with no editable text elements (or a cached page without edits) get the block panel:
  *    a fixed column over a dimmed backdrop, rendered from `page.blocks`.
+ * In demo mode (`playTailored`) the in-place edits play one by one, top to bottom, with motion (inplace.playInPlace).
  * The gate checks the visible ORIGINAL page in both cases; extraction happens before anything is changed (§3.6).
  */
 import type { Fact, Interaction, StrippedClaim, TailoredPage } from '@/types'
@@ -24,18 +27,22 @@ import { PANEL_CSS } from './styles'
 import { type Scorecard, scorecardChip, scorecardLine, scorecardRows } from './scorecard'
 import {
   appendFromSiteInPlace,
+  appliedLabels,
   applyInPlace,
   hasInPlace,
   hideInPlace,
   inPlaceShown,
+  playInPlace,
   showInPlace,
   teardownInPlace,
   type InPlaceTarget,
+  type PlayOptions,
 } from './inplace'
 
 export { PANEL_CSS, INPLACE_CSS, WHY_CSS, BADGE_CSS } from './styles'
-export { applyInPlace, foldTargets, hasInPlace, inPlaceShown, markedElements, whyChip } from './inplace'
-export type { InPlaceTarget, ResolveSegment, ResolveRegion } from './inplace'
+export { appliedLabels, applyInPlace, hasInPlace, inPlaceShown, markedElements, playInPlace, whyChip } from './inplace'
+export type { InPlaceTarget, PlayOptions, ResolveSegment, ResolveRegion } from './inplace'
+export { MOTION } from './live'
 export { buildScorecard, countEdits, countWords, measureSide, scorecardChip, scorecardLine, scorecardRows } from './scorecard'
 export type { Scorecard, ScorecardSide } from './scorecard'
 export {
@@ -77,6 +84,8 @@ export interface TailorUi {
   setGateSummary(checked: number, stripped: number, log?: StrippedClaim[]): void
   /** Shows an error (or any short status) in the bar. Never pass message text here. */
   setStatus(text: string, isError?: boolean): void
+  /** The last status, for the popup (the bar itself is never shown). `isGate` = the "checked N · stripped M" line. */
+  readStatus(): { text: string; isError: boolean; isGate: boolean }
   /** The scorecard chip ("1st match 3.6 screens down → first screen · words 2,870 → 1,140"); clicking it opens the rows. null clears it. */
   setScorecard(card: Scorecard | null): void
   destroy(): void
@@ -127,6 +136,9 @@ export function mountTailorButton(callbacks: RenderCallbacks): TailorUi {
   const scorePop = el('div', 'score-pop')
   scorePop.hidden = true
   bar.append(button, toggle, share, score, status)
+  // Never shown: the page carries only the changes themselves. The popup drives Tailor / Show original / Share and
+  // reads the status through readStatus, numbers included. The bar stays so those paths work.
+  bar.hidden = true
   root.append(style, bar, gatePop, scorePop)
   document.documentElement.append(host)
 
@@ -156,7 +168,13 @@ export function mountTailorButton(callbacks: RenderCallbacks): TailorUi {
       status.textContent = text
       status.title = text // the bar truncates long statuses
       status.classList.toggle('is-error', isError)
-      if (!status.classList.contains('has-log')) gatePop.hidden = true
+      // A plain status (a demo step, an error, "Learned: …") replaces the gate line: shown at rest, opens nothing.
+      // setGateSummary puts has-log back after it calls this.
+      status.classList.remove('has-log')
+      gatePop.hidden = true
+    },
+    readStatus() {
+      return { text: status.textContent ?? '', isError: status.classList.contains('is-error'), isGate: status.classList.contains('has-log') }
     },
     setScorecard(card) {
       scorePop.hidden = true
@@ -364,12 +382,7 @@ function renderGateLog(state: PanelState, gate: TailoredPage['gate']): void {
  */
 export function renderTailored(page: TailoredPage, facts: Fact[], ui: TailorUi, target?: InPlaceTarget): void {
   if (page.edits && target) {
-    const panel = panels.get(ui.root)
-    if (panel) {
-      panel.overlay.hidden = true
-      teardownPanel(ui)
-      panel.overlay.remove()
-    }
+    dropPanel(ui)
     applyInPlace(page, facts, ui, target)
     ui.setMode('tailored')
     return
@@ -386,8 +399,35 @@ export function renderTailored(page: TailoredPage, facts: Fact[], ui: TailorUi, 
   showTailored(ui)
 }
 
-/** Puts the original back (in-place edits undone, or the panel hidden; both remembered), reports dwell, bar → Original. */
+/**
+ * Demo mode: like renderTailored for a page with edits, but the changes PLAY (§9: "the page re-fits itself"): promoted
+ * cards fly to the front of their list, then every change top to bottom with its motion, the window following. The bar shows "Tailored" from
+ * the start so Original can stop the run. Resolves with whether the tailored view is on screen at the end (false when
+ * the user flipped to Original mid-run). Pages without edits fall back to renderTailored (the panel) and resolve true.
+ */
+export async function playTailored(page: TailoredPage, facts: Fact[], ui: TailorUi, target: InPlaceTarget, opts: PlayOptions = {}): Promise<boolean> {
+  if (!page.edits) {
+    renderTailored(page, facts, ui, target)
+    return true
+  }
+  dropPanel(ui)
+  applyInPlace(page, facts, ui, target, false)
+  ui.setMode('tailored')
+  return playInPlace(ui, opts)
+}
+
+/** An in-place render replaces any block panel. */
+function dropPanel(ui: TailorUi): void {
+  const panel = panels.get(ui.root)
+  if (!panel) return
+  panel.overlay.hidden = true
+  teardownPanel(ui)
+  panel.overlay.remove()
+}
+
+/** Puts the original back (in-place edits undone, or the panel hidden; both remembered), closes any sheet, reports dwell. */
 export function showOriginal(ui: TailorUi): void {
+  openSheets.get(ui.root)?.(false)
   hideInPlace(ui)
   const state = panels.get(ui.root)
   if (state) {

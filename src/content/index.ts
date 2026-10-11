@@ -1,10 +1,14 @@
 /**
  * Content script entry. Runs in the page origin: no IndexedDB, no API keys, no model calls here.
- * Mounts the floating bar, extracts the page content (while the ORIGINAL page is visible, because the
+ * Mounts the (never shown) control host, extracts the page content (while the ORIGINAL page is visible, because the
  * gate checks claims against the rendered visible text), asks the background to tailor, renders the
  * result, and runs the share flow with consent (CONTEXT.txt §3.5, §3.7, §4).
  * By default this happens on its own: the page starts tailoring as soon as it has loaded and the edits land in
  * place the moment the run finishes (§3.5). The bar's Tailor button re-runs it; the popup can turn auto off.
+ * In demo mode (on by default, §9) the edits PLAY: the page rebuilds itself change by change down to the bottom,
+ * with motion, the window going only where a change is, ending back at the top. Show original (popup) stops the
+ * run; off = everything at once. Nothing opens when a run ends: the numbers code measured go to the popup.
+ * Nothing of ours stays on the page: the popup drives everything and reads the status from here.
  *
  * Imports stay light on purpose: '@/tailor/extract', '@/share/hooks' and '@/share/block' pull in no SDK
  * and no IndexedDB, so this bundle loads fast on every page.
@@ -14,7 +18,6 @@ import { send } from '@/messages'
 import type { Fact, Interaction, PageContent, TailoredPage } from '@/types'
 import { extractPage, resolveSegment, type ExtractedPage } from '@/tailor/extract'
 import { readAgentHooks, shareEndpoint } from '@/share/hooks'
-import { siteProfileFor } from '@/sites'
 import { toFromSiteBlock } from '@/share/block'
 import { DEMO_FALLBACK_REPLY } from '@/share/fallback'
 import {
@@ -22,17 +25,24 @@ import {
   markedElements,
   measureSide,
   mountTailorButton,
+  playTailored,
   renderConsentSheet,
   renderFromSite,
   renderTailored,
+  scorecardLine,
   showOriginal,
   type InPlaceTarget,
+  type Scorecard,
   type TailorUi,
 } from '@/render'
 
 let current: TailoredPage | null = null
 let extracted: ExtractedPage | null = null
 let mode: ContentStatus['mode'] = 'original'
+/** The scorecard measured on the last tailored result, for the popup. */
+let lastCard: Scorecard | null = null
+/** Counts tailorNow calls: a run that finds a newer one started (Re-tailor during a playback) leaves the state to it. */
+let tailorRuns = 0
 
 /** Auto-tailor waits for `load` (capped) plus a short settle, so late-rendering storefronts are extracted whole. */
 const AUTO_LOAD_CAP_MS = 1500
@@ -97,8 +107,6 @@ function boot(): void {
         const e = regionElements.get(id)
         return e?.isConnected ? e : null
       }
-      const after = siteProfileFor(url).policy.promoteAfterRole
-      if (after) target.promoteAfterRole = after
     }
     return target
   }
@@ -109,29 +117,50 @@ function boot(): void {
    */
   async function tailorNow(ui: TailorUi, force: boolean, auto = false): Promise<void> {
     const previous = mode
+    const run = ++tailorRuns
     mode = 'loading'
     try {
       const content = getContent()
       const page = current && !force ? current : await send('tailor/run', { content, force })
+      if (run !== tailorRuns) return
       current = page
       if (auto && !page.edits?.length) {
         mode = 'original'
         ui.setStatus(page.edits ? 'Nothing to change for you on this page' : 'Tailored version ready')
         return
       }
-      const profile = await send('profile/get', {})
+      const [profile, settings] = await Promise.all([send('profile/get', {}), send('settings/get', {})])
+      if (run !== tailorRuns) return
+      const facts = liveFacts(profile.facts)
       const target = inPlaceTarget()
       // Scorecard (§8.5): the same marked elements measured on the ORIGINAL page, then on the tailored one.
       showOriginal(ui)
       const marked = page.edits ? markedElements(page, target) : []
       const before = measureSide(document, marked)
-      renderTailored(page, liveFacts(profile.facts), ui, target)
+      const demo = settings.demoMode && !!page.edits?.length
+      if (demo) {
+        // Demo mode: the changes play top to bottom. Mode reads Tailored from the start so Show original can stop the run.
+        mode = 'tailored'
+        const shown = await playTailored(page, facts, ui, target, {
+          onStep: (label, i, n) => ui.setStatus(`${i + 1}/${n} · ${label}`),
+        })
+        if (run !== tailorRuns) return
+        if (!shown) {
+          // The user flipped to Original mid-run (onShowOriginal set the mode); the gate counts still belong in the bar.
+          ui.setGateSummary(page.gate.checked, page.gate.stripped.length, page.gate.stripped)
+          return
+        }
+      } else {
+        renderTailored(page, facts, ui, target)
+      }
       const after = measureSide(document, marked)
-      ui.setScorecard(page.edits ? buildScorecard(page, before, after, marked.length, window.innerHeight) : null)
+      const card = page.edits ? buildScorecard(page, before, after, marked.length, window.innerHeight) : null
+      lastCard = card
+      ui.setScorecard(card)
       ui.setGateSummary(page.gate.checked, page.gate.stripped.length, page.gate.stripped)
       mode = 'tailored'
     } catch (err) {
-      mode = previous === 'loading' ? 'original' : previous
+      if (run === tailorRuns) mode = previous === 'loading' ? 'original' : previous
       throw err
     }
   }
@@ -191,7 +220,16 @@ function boot(): void {
   })
 
   function status(): ContentStatus {
-    return { url, mode, hasAgentHooks: canShare, gate: current?.gate }
+    const s = ui.readStatus()
+    const line = lastCard ? scorecardLine(lastCard) : ''
+    return {
+      url,
+      mode,
+      hasAgentHooks: canShare,
+      ...(current ? { gate: current.gate } : {}),
+      ...(s.text && !s.isGate ? { message: s.text, isError: s.isError } : {}),
+      ...(line ? { scorecard: line } : {}),
+    }
   }
 
   chrome.runtime.onMessage.addListener((cmd: ContentCommand, _sender, sendResponse) => {

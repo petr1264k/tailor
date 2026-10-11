@@ -65,8 +65,8 @@ describe("handlers['extract/run']", () => {
     const result = await run('petr')
     expect(result.stats).toEqual({ chunks: 1, candidates: 2, verified: 2 })
     expect(result).not.toHaveProperty('neverExtracted')
-    // Only extract and merge talk to a model: there is no classifier pass.
-    expect(vi.mocked(completeJson).mock.calls.map((c) => c[0].role)).toEqual(['extract', 'merge'])
+    // Map (extract), merge, then the question-pattern pass (extract role). There is no classifier pass.
+    expect(vi.mocked(completeJson).mock.calls.map((c) => c[0].role)).toEqual(['extract', 'merge', 'extract'])
 
     const { profile } = result
     expect(saveProfile).toHaveBeenCalledWith(expect.anything(), 'petr')

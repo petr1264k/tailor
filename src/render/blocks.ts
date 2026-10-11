@@ -87,7 +87,7 @@ export function blockToPlainText(block: Block): string {
     case 'section':
       return `${block.heading}\n${block.text}`
     case 'hidden':
-      return `Hidden: ${block.label} — ${block.reason}`
+      return `Hidden: ${block.label}`
     case 'cta':
       return block.label
     case 'from_site':
@@ -288,10 +288,10 @@ const RENDERERS: { [T in BlockType]: Renderer<T> } = {
   },
   hidden(root, b, ctx) {
     const row = el('div', 'row')
-    row.append(el('span', 'text', `Hidden: ${b.label} — ${b.reason}`), collapsible(root, b, true, ctx))
+    row.append(el('span', 'text', `Hidden: ${b.label}`), collapsible(root, b, true, ctx))
     // TODO(render): the frozen hidden block carries no text, so Expand can only point back to the original page.
     // If the tailor module starts locating the hidden part in the original DOM, show it here.
-    root.append(row, el('p', 'body', 'Tailor folded this part away for you. It is still on the original page: switch to Original to read it.'))
+    root.append(row, el('p', 'body', 'Folded away. It is still on the original page: switch to Original to see it.'))
   },
   cta(root, b) {
     const href = safeHref(b.href)

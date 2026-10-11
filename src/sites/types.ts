@@ -51,6 +51,11 @@ export interface SiteProfile {
   region: string
   /** Region candidates matching this are ignored (spacers, trackers). */
   skip?: string
+  /**
+   * Selector for a region's title element when the site keeps it outside a heading (an active tab label, a shelf
+   * headline in a div). The first visible match with text wins; else the region's top-level heading.
+   */
+  title?: string
   roles: RoleRule[]
   items: ItemRule[]
   /**

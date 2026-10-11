@@ -107,13 +107,13 @@ describe('in-place edits', () => {
     expect(section.nextElementSibling?.id).toBe('specs') // back between its original neighbours
   })
 
-  it('an outside ad (decided by code) folds away instead of moving down; the undo restores it exactly', () => {
+  it('an outside ad (decided by code) moves down like anything else: nothing is ever display:none', () => {
     setup(`<main><h1>Title here</h1><p id="body">Real content here.</p><div id="ad" class="sponsored"><p>Sponsored: buy the thing today.</p></div><p id="last">Last paragraph here.</p></main>`)
     renderTailored(page([{ op: 'hide', ids: [byText('Sponsored')], label: 'Sponsored unit', reason: 'an outside ad' }]), [], ui!, target())
     const ad = document.getElementById('ad') as HTMLElement
-    expect(ad.style.getPropertyValue('display')).toBe('none')
-    expect(ad.nextElementSibling?.id).toBe('last') // folded where it stood, not moved
-    expect(appliedLabels(ui!)).toEqual(['Hidden ad: Sponsored unit'])
+    expect(ad.hasAttribute('style')).toBe(false)
+    expect(document.querySelector('main')!.lastElementChild).toBe(ad) // moved down, still on the page
+    expect(appliedLabels(ui!)).toEqual(['Moved down: Sponsored unit'])
     showOriginal(ui!)
     expect(ad.hasAttribute('style')).toBe(false)
     expect(ad.nextElementSibling?.id).toBe('last')

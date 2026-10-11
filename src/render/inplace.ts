@@ -18,7 +18,6 @@
 import type { BlockType, Fact, PageEdit, PageRegion, PageSegment, RegionRole, TailoredPage } from '@/types'
 import type { InteractionEvent, TailorUi } from './index'
 import { displayHost, el, evidenceLine, splitSiteClaims } from './blocks'
-import { isOutsideAd } from '@/sites'
 import { BADGE_CSS, INPLACE_CSS, WHY_CSS } from './styles'
 import {
   MOTION,
@@ -28,7 +27,6 @@ import {
   bringOnScreen,
   byDocumentOrder,
   cancelRun,
-  collapse,
   dim,
   finishRun,
   flip,
@@ -609,31 +607,23 @@ export function applyInPlace(page: TailoredPage, facts: Fact[], ui: TailorUi, ta
     })
   }
 
-  // 2. Hides. Nothing is hidden but an outside ad (code decides, src/sites/ads): an ad folds away; anything else
-  //    (the smallest exclusive container; a region or item is one already) moves to the end of its parent, below
-  //    what matters to this person. The label carries no reason. Undo restores the ad's display and puts each moved
-  //    node back between its original neighbours (in reverse, so neighbours that moved too are back first).
+  // 2. Hides. Nothing is ever removed or display:none'd, not even a code-detected outside ad (Petr, Oct 10 6 pm:
+  //    "keep move downs just dont delete sections completely"): the part (the smallest exclusive container; a region
+  //    or item is one already) moves to the end of its parent, below what matters to this person, where it stays
+  //    readable. The label carries no reason. Undo puts each moved node back between its original neighbours (in
+  //    reverse, so neighbours that moved too are back first).
   for (const edit of edits) {
     if (edit.op !== 'hide') continue
     const direct = edit.ids.filter(isMapId).map(resolveId).filter((e): e is Element => !!e)
     const group = edit.ids.filter((id) => !isMapId(id)).map(resolveId).filter((e): e is Element => !!e)
-    const targets = [...direct, ...foldTargets(group, allSegmentEls).filter((t) => !direct.some((d) => d.contains(t)))]
-    if (targets.length === 0) continue
-    const ads = targets.filter((t) => isOutsideAd(t))
-    const moved = targets.filter((t) => !ads.includes(t))
+    const moved = [...direct, ...foldTargets(group, allSegmentEls).filter((t) => !direct.some((d) => d.contains(t)))]
+    if (moved.length === 0) continue
     const origin = new Map<Element, { parent: Element; next: Node | null }>()
-    /** The ad's inline display before we hid it; null = it had no style attribute, so the undo leaves none behind. */
-    const display = new Map<Element, { value: string; priority: string } | null>()
     push({
       op: 'hide',
-      label: `${moved.length ? 'Moved down' : 'Hidden ad'}: ${shortLabel(edit.label)}`,
-      target: () => targets[0]!,
+      label: `Moved down: ${shortLabel(edit.label)}`,
+      target: () => moved[0]!,
       on: () => {
-        for (const t of ads) {
-          const style = (t as HTMLElement).style
-          display.set(t, t.hasAttribute('style') ? { value: style.getPropertyValue('display'), priority: style.getPropertyPriority('display') } : null)
-          style.setProperty('display', 'none', 'important')
-        }
         for (const t of moved) {
           const parent = t.parentElement
           if (!parent) continue
@@ -647,21 +637,11 @@ export function applyInPlace(page: TailoredPage, facts: Fact[], ui: TailorUi, ta
           if (o) o.parent.insertBefore(t, o.next && o.next.parentNode === o.parent ? o.next : null)
         }
         origin.clear()
-        for (const t of ads) {
-          const style = (t as HTMLElement).style
-          const was = display.get(t)
-          if (was?.value) style.setProperty('display', was.value, was.priority)
-          else style.removeProperty('display')
-          if (was === null && style.length === 0) t.removeAttribute('style')
-        }
-        display.clear()
       },
-      // An ad dims and shrinks to nothing; a moved part slides down out of the way and what followed it slides up.
+      // The part slides down out of the way and what followed it slides up.
       play: async (run, on) => {
-        const releases = await Promise.all(ads.map((t) => collapse(run, t)))
         const scope = [...new Set(moved.flatMap((t) => flipScope(t, t.parentElement)))]
         await flip(run, scope, on)
-        for (const r of releases) r()
       },
     })
   }

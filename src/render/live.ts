@@ -36,8 +36,6 @@ export const MOTION = {
   typeMax: 850,
   typePerChar: 12,
   glowTail: 260,
-  collapse: 520,
-  stubIn: 260,
   flip: 650,
   noteIn: 440,
   badgeIn: 380,
@@ -103,7 +101,7 @@ const canAnimate = (el: Element): el is Element & { animate: Element['animate'] 
 /**
  * Plays keyframes on an element and resolves when they finish (or at once when the run is cancelled or WAAPI is
  * absent). `duration` is in pace-1 ms. Resolves with a release function for fill:forwards animations: call it once the
- * DOM has caught up (e.g. after display:none landed), so the element returns to its stylesheet state.
+ * DOM has caught up (e.g. after the new text is in), so the element returns to its stylesheet state.
  */
 export function animate(run: Run, el: Element, keyframes: Keyframe[], duration: number, extra: KeyframeAnimationOptions = {}): Promise<() => void> {
   if (run.cancelled || !canAnimate(el)) return Promise.resolve(() => {})
@@ -180,31 +178,6 @@ export async function typewrite(run: Run, node: Text, text: string, duration: nu
     if (progress >= 1) break
   }
   node.data = text
-}
-
-/**
- * Dims, then shrinks to a line (max-height so box-sizing does not matter, margins, padding, clipped so nothing spills)
- * and stays there until released, once display:none has landed.
- */
-export function collapse(run: Run, el: Element): Promise<() => void> {
-  const h = Math.ceil(el.getBoundingClientRect().height)
-  const open = { maxHeight: `${h}px`, minHeight: '0px', clipPath: 'inset(0 0 0 0)' }
-  return animate(
-    run,
-    el,
-    [
-      { opacity: 1, ...open },
-      { opacity: 0.35, ...open, offset: 0.3 },
-      { opacity: 0, maxHeight: '0px', minHeight: '0px', clipPath: 'inset(0 0 100% 0)', paddingTop: '0px', paddingBottom: '0px', marginTop: '0px', marginBottom: '0px', borderTopWidth: '0px', borderBottomWidth: '0px' },
-    ],
-    MOTION.collapse,
-    { easing: EASE_IN_OUT, fill: 'forwards' },
-  )
-}
-
-/** The fold stub takes the hidden part's place: slides in from a little above. */
-export function stubIn(run: Run, host: Element): Promise<() => void> {
-  return animate(run, host, [{ opacity: 0, translate: '0 -6px' }, { opacity: 1, translate: '0 0' }], MOTION.stubIn)
 }
 
 /** A sticky note pressed onto the page: fades in while it comes down from a little above, a size up, and settles. */

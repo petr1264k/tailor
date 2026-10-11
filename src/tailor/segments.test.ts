@@ -108,3 +108,16 @@ describe('collectSegments', () => {
     expect(segments.length).toBeLessThanOrEqual(220)
   })
 })
+
+describe('isVisible without checkVisibility (jsdom, saved demo copies)', () => {
+  it('treats a `hidden` ancestor like display:none, so an inactive tab pane marked by demo/scan-page.sh is skipped', () => {
+    const doc = dom(`
+      <div id="offers"><p>Rambler 16 oz Travel Bottle with commuter cap, now a quarter off.</p></div>
+      <div id="new" hidden><p>Brand New Thing arriving next week, sign up to be notified first.</p></div>
+      <div id="inline" style="display:none"><p>Mobile-only quick links to every category on the site.</p></div>`)
+    const texts = collectSegments(doc).segments.map((s) => s.text)
+    expect(texts.some((t) => t.startsWith('Rambler 16 oz'))).toBe(true)
+    expect(texts.some((t) => t.startsWith('Brand New Thing'))).toBe(false)
+    expect(texts.some((t) => t.startsWith('Mobile-only'))).toBe(false)
+  })
+})

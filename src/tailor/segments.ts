@@ -61,7 +61,10 @@ export function isVisible(el: Element): boolean {
   if (html.hidden) return false
   const check = (el as Element & { checkVisibility?: (o?: { checkVisibilityCSS?: boolean }) => boolean }).checkVisibility
   if (typeof check === 'function') return check.call(el, { checkVisibilityCSS: true })
+  // No checkVisibility (jsdom): the `hidden` attribute and inline display/visibility, on the element or an ancestor.
+  // Saved demo copies mark what Chrome did not render with `hidden` (demo/scan-page.sh), so this agrees with the live page.
   for (let node: Element | null = el; node; node = node.parentElement) {
+    if ((node as HTMLElement).hidden) return false
     const style = (node as HTMLElement).style
     if (!style) continue
     if (style.display === 'none' || style.visibility === 'hidden') return false

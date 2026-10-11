@@ -4,7 +4,21 @@
     "url": "https://www.anker.com/",
     "file": "demo/pages/5-anker.html",
     "kind": "storefront",
-    "note": "deep storefront personalization: site profile in src/sites/anker.ts; promote, badge, hide regions; scorecard"
+    "note": "deep storefront personalization: site profile in src/sites/anker.ts; promote, badge, hide regions; scorecard; copy = rendered DOM via demo/scan-page.sh (17 regions, 29 priced cards)"
+  },
+  {
+    "id": "yeti",
+    "url": "https://www.yeti.com/",
+    "file": "demo/pages/6-yeti.html",
+    "kind": "storefront",
+    "note": "storefront #2: site profile in src/sites/yeti.ts (SFCC Page Designer: hero, 4 category tiles, Offers shelf with prices + crossed-out prices, Fandom / New & Trending / colour / category carousels, benefits, founders' story; 12 regions); copy = rendered US page via demo/scan-page.sh --headed (bot wall for headless Chrome and curl)"
+  },
+  {
+    "id": "patagonia",
+    "url": "https://www.patagonia.com/home/",
+    "file": "demo/pages/7-patagonia.html",
+    "kind": "storefront",
+    "note": "storefront #3: site profile in src/sites/patagonia.ts (SFCC Page Designer: hero, category + activity routers, vote campaign, Latest Stories, values strip; 6 regions, no prices on a first visit); copy = rendered page via demo/scan-page.sh --headed (Akamai 'Sit tight' page otherwise)"
   },
   {
     "id": "product",

@@ -16,6 +16,11 @@ export type { SegmentedPage } from './segments'
 
 /** Readability text shorter than this is treated as a failed parse; we fall back to the raw body text. */
 export const MIN_READABLE_CHARS = 200
+/**
+ * Readability must also keep at least this share of the visible text. Below it, it picked one block of a storefront
+ * (yeti.com: 1.7k of 26k chars, patagonia.com: 0.6k of 19k) and the page's own words would be missing from `text`.
+ */
+export const MIN_READABLE_SHARE = 0.25
 /** Cap on visible text (the gate checks against it, §3.6). */
 export const MAX_VISIBLE_CHARS = 60_000
 /** Cap on main-content text kept in PageContent (the rewrite prompt caps further). */
@@ -135,7 +140,7 @@ export function extractPage(doc: Document, url: string): ExtractedPage {
     article = null
   }
   const readable = tidyText(article?.textContent ?? '')
-  const useReadability = readable.length >= MIN_READABLE_CHARS
+  const useReadability = readable.length >= MIN_READABLE_CHARS && readable.length >= visibleText.length * MIN_READABLE_SHARE
 
   const lang = doc.documentElement?.getAttribute('lang')?.trim() || article?.lang?.trim() || undefined
   const agentHooks = readAgentHooks(doc) // never throws; null when the page offers no agent hooks

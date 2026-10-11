@@ -21,3 +21,5 @@ demo/pages/*_files/
 # Raw chat exports and profiles built from them (personal data)
 profiles/source/
 profiles/processed/
+demo/pages/*.png
+demo/pages/*.map.json

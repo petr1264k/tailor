@@ -1,10 +1,10 @@
 /**
- * Outside advertising, decided by code (CONTEXT.txt §0: the model proposes, code decides). The only thing Tailor may
- * hide on a page is an ad from OUTSIDE the site: an ad-network slot, a sponsored unit, a paid placement for another
- * company. The site's own words stay on the page: its news, its newsletter pitch, its testimonials, its membership
- * offer, promos for its own products; when they matter less to this person they move down, never away. The content
- * script marks the ids that are outside ads (PageContent.adIds) so the prompt can name them; the renderer asks
- * isOutsideAd() on the live element before it folds anything (src/render/inplace.ts).
+ * Outside advertising, decided by code (CONTEXT.txt §0: the model proposes, code decides). An outside ad is an
+ * ad-network slot, a sponsored unit, a paid placement for another company. The content script marks their ids
+ * (PageContent.adIds) so the prompt can name them in a hide without mistaking them for the site's own words. Nothing on
+ * a page is ever removed (4008148): a hide moves the part below what matters, an outside ad included; the site's own
+ * words (its news, its newsletter pitch, its testimonials, its membership offer, promos for its own products) move down
+ * the same way when they matter less to this person.
  *
  * Three signals, all from the DOM, found bottom-up so a small page never counts as one big ad:
  * - ad markup on the element or an ancestor (adsbygoogle, Ad Manager ids, ad/sponsored class tokens, data-ad-*);
@@ -222,7 +222,7 @@ export function isOutsideAd(el: Element): boolean {
 
 /**
  * Every id (s#, r#, i#) that is an outside ad, in map order then segment order. A region that is an ad takes its items
- * and segments with it; an item that is an ad takes its segments. These are the only ids that ever fold away.
+ * and segments with it; an item that is an ad takes its segments. They move down like anything else a hide names.
  */
 export function outsideAdIds(doc: Document, segments: Map<string, Element>, regionElements: Map<string, Element>, regions: PageRegion[]): string[] {
   const finder = createAdFinder(doc)

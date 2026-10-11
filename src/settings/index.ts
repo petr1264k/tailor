@@ -19,8 +19,8 @@ export interface Settings {
    */
   autoTailorOnLoad: boolean
   /**
-   * Demo mode (§9): when a tailored result lands, the changes play one by one from the top of the page to the bottom,
-   * each with its motion and the window following, instead of appearing at once. On by default; off = instant.
+   * Demo mode (§9), "Animate" in the popup: when a tailored result lands, the changes play one by one from the top of the
+   * page to the bottom, each with its motion and the window following, instead of appearing at once. On by default; off = instant.
    */
   demoMode: boolean
   /** Which stored profile is active (the demo uses two: Mikhail, Petr). */

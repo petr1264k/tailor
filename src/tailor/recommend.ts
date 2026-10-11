@@ -30,7 +30,7 @@ import { siteProfileFor } from '@/sites'
 import { claimKey, findClaims, matchForm } from '@/gate/claims'
 import { matchesUserFact } from '@/gate'
 import { normalizeForMatch } from '@/gate/normalize'
-import { isDismissive, MAX_NOTES } from './edit'
+import { MAX_NOTES } from './edit'
 import { expandPageTokens, tokenize } from './relevance'
 import { chooseLanguage, type RewriteOptions } from './rewrite'
 
@@ -44,6 +44,13 @@ export const MAX_CANDIDATES = 60
 export const MAX_PICK_CHARS = 120
 /** A word shared by more than this share of the cards (e.g. "charger" on anker.com) says nothing about fit. */
 export const MAX_COMMON_SHARE = 1 / 3
+/**
+ * A text that tells the person the page or a part of it is not for them. They opened this page; such a line is noise
+ * (same rule as edit.ts rule 5b). Kept local so this module does not depend on edit.ts beyond its note cap.
+ */
+const DISMISSIVE_RE =
+  /\b(not (really )?(for|about|relevant to|related to|tied to|aimed at) you|(doesn'?t|does not|won'?t|will not|isn'?t|is not) (tie|relate|connect|apply|matter|speak|fit|relevant|related)\b|unrelated|irrelevant|(the )?rest of (this|the) (page|site)|nothing (here|on this page|for you)|(skip|ignore) (this|the rest|these)|not your (thing|area|focus|work))\b/i
+const isDismissive = (text: string): boolean => DISMISSIVE_RE.test(text)
 /** Words that claim more than a page of 29 products can prove. */
 const SUPERLATIVE_RE = /(^|[^\p{L}])(best|cheapest|top|#\s?\d|no\.\s?\d|number one|перв|лучш)/iu
 
@@ -237,7 +244,7 @@ export function claimsNotOnCard(text: string, c: Candidate, facts: Fact[]): stri
 
 /**
  * One line, at most MAX_PICK_CHARS; never "This ..." filler, ranks or superlatives (they claim more than the page
- * proves), never a text that dismisses the page or a part of it (edit.ts isDismissive: they opened this page); never empty.
+ * proves), never a text that dismisses the page or a part of it (they opened this page); never empty.
  */
 export function cleanPickText(text: string): string {
   let t = oneLine(text)

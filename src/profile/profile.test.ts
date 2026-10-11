@@ -10,6 +10,8 @@ import {
   formatEvidence,
   getProfile,
   listProfiles,
+  loadProfileFile,
+  parseProfileFile,
   saveProfile,
   sourceSplit,
   truncateQuote,
@@ -124,6 +126,40 @@ describe('updateFact / deleteFact', () => {
     await Promise.all([updateFact('a', { value: 'A2' }), updateFact('b', { value: 'B2' })])
     const p = await getProfile()
     expect(p.facts.map((f) => f.value)).toEqual(['A2', 'B2'])
+  })
+})
+
+describe('parseProfileFile / loadProfileFile', () => {
+  const file = (): Profile => ({
+    version: 1,
+    facts: [fact('f1', ['claude'], { prior: { alpha: 1.95, beta: 1 } }), fact('f2', ['claude'])],
+    shares: [],
+    stats: { conversations: 42, messages: 103, from: '2026-07-14', to: '2026-10-10' },
+  })
+
+  it('accepts a §6 profile file as-is, or wrapped as { id, profile }', () => {
+    expect(parseProfileFile(file())).toEqual(file())
+    expect(parseProfileFile({ id: 'petr', profile: file() })).toEqual(file())
+  })
+
+  it('names the bad field by path, never its value', () => {
+    const bad = { ...file(), facts: [{ ...fact('f1', ['claude']), category: 'secret-text' }] }
+    expect(() => parseProfileFile(bad)).toThrow(/not a Tailor profile file \(facts\.0\.category: /)
+    expect(() => parseProfileFile(bad)).not.toThrow(/secret-text/)
+    expect(() => parseProfileFile([{ mapping: {} }])).toThrow(/not a Tailor profile file/)
+  })
+
+  it('rejects duplicate fact ids', () => {
+    expect(() => parseProfileFile({ ...file(), facts: [fact('f1', ['claude']), fact('f1', ['claude'])] })).toThrow(/unique/)
+  })
+
+  it('replaces the facts of the target profile, keeps its name and bumps the version past both', async () => {
+    await saveProfile({ ...(await getProfile('mikhail')), version: 5, facts: [fact('old', ['chatgpt'])] }, 'mikhail')
+    const loaded = await loadProfileFile(file(), 'mikhail')
+    expect(loaded.facts.map((f) => f.id)).toEqual(['f1', 'f2'])
+    expect(loaded.stats.conversations).toBe(42)
+    expect(loaded.version).toBe(7)
+    expect((await listProfiles()).find((p) => p.id === 'mikhail')?.name).toBe('Mikhail')
   })
 })
 

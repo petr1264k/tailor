@@ -4,6 +4,7 @@
  * ONE JSON file, never a zip → detectExportFormat (user overrides if 'unknown') → import.runImport, which is
  * parseExport → applyLimits → saveConversations plus skip counts → per-source stats. Then "Extract profile" starts the
  * page-level extraction job (extractJob.ts → extract.runExtract, §3.2) into the active profile; it keeps running across the tabs.
+ * The shortcut past extraction: drop a saved profile file (*.profile.json, a §6 Profile) → profile.loadProfileFile.
  * Nothing here logs or displays message text: the raw chats never reach the screen (§0).
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -11,6 +12,7 @@ import type { ChatOrigin } from '@/types'
 import type { ArchiveStats } from '@/messages'
 import { DEFAULT_IMPORT_OPTIONS, detectExportFormat, runImport } from '@/import'
 import { clearArchive, getArchiveStats } from '@/archive'
+import { activeFacts, getProfile, loadProfileFile, parseProfileFile } from '@/profile'
 import { attempt, isZipFile, monthRange, originLabel, type Attempt } from './helpers'
 import { describeExtractJob, dismissExtractJob, isOwnRun, startExtract } from './extractJob'
 import { useExtractJob } from './useExtractJob'
@@ -54,6 +56,9 @@ export function ImportTab({ profileId, profileName }: { profileId: string; profi
     const detected = await attempt(() => detectExportFormat(json))
     if (detected.ok && detected.value !== 'unknown') return doImport(json, detected.value, file.name)
     setBusy(false)
+    if ((await attempt(() => parseProfileFile(json))).ok) {
+      return setImportLine({ ok: false, text: `${file.name} is a profile, not a chat export. Drop it under “Load a saved profile”.` })
+    }
     setImportLine(null)
     setPending({
       fileName: file.name,
@@ -123,7 +128,7 @@ export function ImportTab({ profileId, profileName }: { profileId: string; profi
               <code>conversations.json</code>.
             </p>
           </div>
-          <DropZone disabled={busy} onFiles={(f) => void onFiles(f)} />
+          <DropZone label="Drop conversations.json here" disabled={busy} onFiles={(f) => void onFiles(f)} />
           {pending && (
             <div className="row">
               <span>
@@ -146,7 +151,19 @@ export function ImportTab({ profileId, profileName }: { profileId: string; profi
   )
 }
 
-function DropZone({ disabled, onFiles }: { disabled: boolean; onFiles: (files: FileList | null) => void }) {
+/** Reads the one dropped JSON file. Returns an error line instead of the parser message (it can quote file text, §0). */
+async function readOneJson(files: FileList | null): Promise<{ file: File; json: unknown } | { error: string } | null> {
+  if (!files || files.length === 0) return null
+  if (files.length > 1) return { error: 'Drop one file at a time.' }
+  const file = files[0]!
+  try {
+    return { file, json: JSON.parse(await file.text()) }
+  } catch {
+    return { error: `${file.name} is not valid JSON.` }
+  }
+}
+
+function DropZone({ label, disabled, onFiles }: { label: string; disabled: boolean; onFiles: (files: FileList | null) => void }) {
   const [over, setOver] = useState(false)
   const input = useRef<HTMLInputElement>(null)
   return (
@@ -163,7 +180,7 @@ function DropZone({ disabled, onFiles }: { disabled: boolean; onFiles: (files: F
         if (!disabled) onFiles(e.dataTransfer.files)
       }}
     >
-      <b>Drop conversations.json here</b>
+      <b>{label}</b>
       <span className="muted small">or</span>
       <button className="primary" disabled={disabled} onClick={() => input.current?.click()}>
         Choose file
@@ -253,6 +270,31 @@ function ExtractCard({ profileId, profileName, disabled }: { profileId: string; 
     if (!r.ok) setStartError(r.error)
   }
 
+  const [loadLine, setLoadLine] = useState<{ ok: boolean; text: string } | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  /** A saved profile file replaces this profile's facts: the shortcut past extraction (e.g. claude.profile.json). */
+  async function onProfileFile(files: FileList | null) {
+    const read = await readOneJson(files)
+    if (!read) return
+    if ('error' in read) return setLoadLine({ ok: false, text: read.error })
+    const { file, json } = read
+    const parsed = await attempt(() => parseProfileFile(json))
+    if (!parsed.ok) return setLoadLine({ ok: false, text: `${file.name}: ${parsed.error}` })
+    const current = await attempt(() => getProfile(profileId))
+    const existing = current.ok ? activeFacts(current.value).length : 0
+    const incoming = parsed.value.facts.length
+    if (existing > 0 && !window.confirm(`Replace the ${existing} facts in “${profileName}” with the ${incoming} facts in ${file.name}?`)) return
+    setLoading(true)
+    const r = await attempt(() => loadProfileFile(json, profileId))
+    setLoading(false)
+    setLoadLine(
+      r.ok
+        ? { ok: true, text: `Loaded ${incoming} facts from ${file.name} into “${profileName}”. Open the Profile tab to review.` }
+        : { ok: false, text: `Load failed: ${r.error}` },
+    )
+  }
+
   const line = describeExtractJob(job)
   const hint = job.status === 'done' ? (job.profileId === profileId ? ' Open the Profile tab to review.' : ' Switch to that profile to review.') : ''
   return (
@@ -284,6 +326,18 @@ function ExtractCard({ profileId, profileName, disabled }: { profileId: string; 
           </button>
         </div>
       )}
+      <div className="card-head load-head">
+        <h3>Load a saved profile</h3>
+        <p className="muted small">
+          Already extracted? Drop a profile file (<code>*.profile.json</code>). It replaces the facts in “{profileName}”.
+        </p>
+      </div>
+      <DropZone
+        label="Drop a .profile.json here"
+        disabled={running || loading || disabled}
+        onFiles={(f) => void onProfileFile(f)}
+      />
+      {loadLine && <div className={loadLine.ok ? 'ok' : 'error'}>{loadLine.text}</div>}
     </section>
   )
 }

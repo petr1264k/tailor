@@ -46,6 +46,7 @@ body { font-size: 16px; line-height: 1.55; }
 }
 .drop b { font-weight: 500; }
 .drop.over { border-color: var(--accent); background: var(--accent-soft); }
+.load-head { gap: 6px; padding-top: 16px; border-top: 1px solid var(--line-2); }
 .progress { font: 500 12px/1.4 var(--mono); letter-spacing: 0.04em; color: var(--muted); }
 
 /* ── Facts ── */

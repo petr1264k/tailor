@@ -12,6 +12,7 @@ import type { Evidence, Fact, Profile, SourceSplit } from '@/types'
 import type { HandlerMap } from '@/messages'
 import { getDb, type StoredProfile } from '@/archive'
 import { getSettings } from '@/settings'
+import { ProfileFileSchema } from '@/schemas'
 
 export const DEFAULT_PROFILE_ID = 'default'
 
@@ -118,6 +119,29 @@ export async function updateFact(
  */
 export async function deleteFact(factId: string, profileId?: string): Promise<Profile> {
   return updateFact(factId, { userStatus: 'deleted' }, profileId)
+}
+
+/**
+ * Checks a dropped profile file with ProfileFileSchema: a bare §6 Profile (claude.profile.json) or one wrapped as
+ * `{ id, profile }` (api-profile.json, petr/default.json). Throws a readable error that names the first bad field
+ * by its path only, never its value.
+ */
+export function parseProfileFile(json: unknown): Profile {
+  const wrapped = typeof json === 'object' && json !== null && !('facts' in json) && 'profile' in json
+  const r = ProfileFileSchema.safeParse(wrapped ? (json as { profile: unknown }).profile : json)
+  if (r.success) return r.data
+  const issue = r.error.issues[0]
+  const where = issue?.path.length ? issue.path.join('.') : 'top level'
+  throw new Error(`not a Tailor profile file (${where}: ${issue?.message ?? 'invalid'})`)
+}
+
+/**
+ * Replaces the facts, shares and stats of a profile with a checked profile file. The name stays; the version
+ * bumps past both the stored and the file's version (saveProfile), so no tailored page from before is reused.
+ */
+export async function loadProfileFile(json: unknown, profileId?: string): Promise<Profile> {
+  const file = parseProfileFile(json)
+  return withProfileLock(() => saveProfile(file, profileId))
 }
 
 /** Facts that are live: not deleted. */

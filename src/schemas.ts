@@ -5,7 +5,7 @@
  * the type-level assertion at the bottom fails the build if they drift.
  */
 import { z } from 'zod'
-import type { Block, FactCategory, PageEdit } from './types'
+import type { Block, FactCategory, PageEdit, Profile } from './types'
 import { FACT_CATEGORIES } from './types'
 
 export const FactCategorySchema = z.enum(FACT_CATEGORIES as [FactCategory, ...FactCategory[]])
@@ -78,6 +78,37 @@ export const RelevantFactIdsSchema = z.object({ factIds: z.array(z.string()).max
 /** Needs text for a site (§4). Code scrubs names, emails and phone numbers from it afterwards regardless (scrubForSharing). */
 export const NeedsTextSchema = z.object({ needs: z.string().min(1).max(2000), constraints: z.string().max(1000).optional() })
 
+/**
+ * A saved profile file the owner drops on the Import tab (e.g. profiles/processed/mik/claude.profile.json): a §6 Profile.
+ * Not model output, but it comes from outside the extension, so code checks it the same way before it is stored.
+ */
+const EvidenceSchema = z.object({ origin: z.string(), title: z.string(), date: z.string(), quote: z.string() })
+const FactSchema = z.object({
+  id: z.string().min(1),
+  category: FactCategorySchema,
+  value: z.string().min(1),
+  confidence: z.number().min(0).max(1),
+  source: z.enum(['chat', 'behavior']),
+  evidence: z.array(EvidenceSchema),
+  userStatus: z.enum(['kept', 'deleted', 'edited']).optional(),
+  prior: z.object({ alpha: z.number().positive(), beta: z.number().positive() }).optional(),
+})
+const SiteShareSchema = z.object({
+  url: z.string(),
+  needsText: z.string(),
+  factIds: z.array(z.string()),
+  response: z.string(),
+  at: z.string(),
+})
+export const ProfileFileSchema = z.object({
+  version: z.number().int().nonnegative(),
+  facts: z
+    .array(FactSchema)
+    .refine((facts) => new Set(facts.map((f) => f.id)).size === facts.length, 'fact ids must be unique'),
+  shares: z.array(SiteShareSchema),
+  stats: z.object({ conversations: z.number(), messages: z.number(), from: z.string(), to: z.string() }),
+})
+
 // ── Type-level lock between BlockSchema and the frozen Block type ──
 type SchemaBlock = z.infer<typeof BlockSchema>
 type MutuallyAssignable<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never
@@ -86,3 +117,6 @@ void _blockSchemaMatchesFrozenType
 type SchemaEdit = z.infer<typeof PageEditSchema>
 const _editSchemaMatchesType: MutuallyAssignable<SchemaEdit, PageEdit> = true
 void _editSchemaMatchesType
+type SchemaProfile = z.infer<typeof ProfileFileSchema>
+const _profileSchemaMatchesFrozenType: MutuallyAssignable<SchemaProfile, Profile> = true
+void _profileSchemaMatchesFrozenType

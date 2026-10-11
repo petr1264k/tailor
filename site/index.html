@@ -57,6 +57,15 @@ a { color: var(--accent); }
 .hero h1 em { font-style: normal; color: var(--chalk-yellow); }
 .lede { margin-top: 22px; font-size: 18px; color: #e3e6f0; max-width: 34em; }
 
+/* Calls to action (coframe-style pills with a trailing arrow) */
+.ctas { margin-top: 30px; display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; }
+.btn { display: inline-flex; align-items: center; gap: 10px; font-weight: 500; font-size: 16px; text-decoration: none; border-radius: 999px; padding: 12px 20px; transition: background 0.15s, color 0.15s; }
+.btn svg { width: 18px; height: 18px; flex: none; }
+.btn-light { background: #fff; color: var(--ink); }
+.btn-light:hover { background: var(--chalk); }
+.link-light { color: #fff; font-weight: 500; text-decoration: none; border-bottom: 1px solid rgba(255,255,255,0.35); padding-bottom: 2px; }
+.link-light:hover { border-bottom-color: #fff; }
+
 /* Profile card in the hero: one fact and the words it came from */
 .fact-card { margin: 0; background: var(--card); color: var(--ink); border-radius: 16px; box-shadow: var(--shadow-card); padding: 22px; display: grid; gap: 16px; min-width: 0; }
 .fact-card .row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
@@ -87,6 +96,32 @@ section { padding-block: 72px; }
 .rule h3 { font-size: 18px; margin-bottom: 6px; }
 .rule p { color: var(--muted); font-size: 15.5px; }
 
+/* Future: the scheme, then three stages (a real sequence: today, next, later) */
+.scheme { margin: 0 0 28px; background: #fdfbf5; border: 1px solid var(--line-2); border-radius: 16px; box-shadow: var(--shadow-1); padding: 12px; }
+.scheme-scroll { overflow-x: auto; }
+.scheme img { display: block; width: 100%; min-width: 640px; height: auto; }
+.scheme figcaption { margin: 10px 8px 2px; font-size: 14px; color: var(--muted); }
+.stages { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.stages li { border-top: 2px solid var(--line); padding-top: 14px; display: grid; gap: 8px; align-content: start; min-width: 0; }
+.stages li.now { border-top-color: var(--mark); }
+.stages .when { font: 500 12px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+.stages li.now .when { color: var(--mark); }
+.stages h3 { font-size: 18px; }
+.stages p { color: var(--muted); font-size: 15.5px; }
+
+/* Install */
+.install { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 32px 48px; align-items: start; }
+.install ol { margin: 0; padding-left: 22px; display: grid; gap: 14px; color: var(--ink-2); }
+.install ol li::marker { font: 500 13px var(--mono); color: var(--accent); }
+.install code { font: 0.92em var(--mono); background: #fff; border: 1px solid var(--line-2); border-radius: 6px; padding: 1px 6px; }
+.terminal { background: var(--ink); color: #e9ebf3; border-radius: 12px; padding: 16px 18px 18px; display: grid; gap: 12px; min-width: 0; }
+.terminal-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.terminal-head .label { color: var(--muted-on-dark); }
+.terminal pre { margin: 0; overflow-x: auto; font: 14px/1.7 var(--mono); }
+.copy { font: 500 12px var(--mono); letter-spacing: 0.04em; color: var(--ink); background: var(--chalk); border: 0; border-radius: 6px; padding: 6px 10px; cursor: pointer; }
+.copy:hover { background: #fff; }
+.note-small { margin-top: 14px; font-size: 14.5px; color: var(--muted); }
+
 /* Footer */
 footer { border-top: 1px solid var(--line); padding-block: 28px 40px; }
 footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px 24px; color: var(--muted); font-size: 14px; }
@@ -96,6 +131,8 @@ footer .brand img { width: 22px; height: 22px; }
 @media (max-width: 900px) {
   .hero .wrap { grid-template-columns: minmax(0, 1fr); gap: 40px; }
   .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .install { grid-template-columns: minmax(0, 1fr); }
+  .stages { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 560px) {
   .hero { padding-block: 28px 64px; }
@@ -124,6 +161,13 @@ footer .brand img { width: 22px; height: 22px; }
         <p class="label">Chrome extension · The Living Internet Build Day, Oct 10 2026</p>
         <h1>Your ChatGPT and Claude history knows you better than <em>any website does.</em></h1>
         <p class="lede">Tailor turns it into a private profile, and a Chrome extension rewrites any page for you. Every change cites your words, and code checks every fact.</p>
+        <div class="ctas">
+          <a class="btn btn-light" href="https://github.com/petr1264k/tailor">
+            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+            View on GitHub <span aria-hidden="true">→</span>
+          </a>
+          <a class="link-light" href="#install">Install from source</a>
+        </div>
       </div>
 
       <figure class="fact-card" aria-label="Example: one fact from a profile and where it came from">
@@ -206,6 +250,71 @@ footer .brand img { width: 22px; height: 22px; }
       </div>
     </div>
   </section>
+
+  <section id="future" style="padding-top: 0">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="label">What's next</p>
+        <h2>From rewriting pages to sites that build them for you</h2>
+        <p>Today Tailor changes a page in your browser. Next, it tells the site what you need, and the site builds the page for you.</p>
+      </div>
+      <figure class="scheme">
+        <div class="scheme-scroll">
+          <img src="future-scheme.svg" width="896" height="567"
+               alt="Diagram: conversations from Claude.ai and chatgpt.com are extracted into user needs A to E. Needs D and E go to the site's share_visitor_needs endpoint as JSON. Steps: the extension reads the site's .agent version and its offerings, selects relevant needs, sends them to share_visitor_needs, Coframe generates an individualized website, and the website opens for the user.">
+        </div>
+        <figcaption>Tailor × Coframe &amp; PAP: your needs go to the site, and the site answers with a page made for you.</figcaption>
+      </figure>
+      <ol class="stages">
+        <li class="now">
+          <span class="when">Today</span>
+          <h3>Tailor rewrites the page</h3>
+          <p>In your browser, from your profile. On coframe.com it can also share a few needs you approve, and shows the site's reply as the site's own words.</p>
+        </li>
+        <li>
+          <span class="when">Next</span>
+          <h3>The site builds it for you</h3>
+          <p>Tailor reads the site's agent version (.agent), picks the needs that matter there and sends them through share_visitor_needs. Coframe generates an individualized version of the site and Tailor opens it.</p>
+        </li>
+        <li>
+          <span class="when">Later</span>
+          <h3>Your agent acts for you</h3>
+          <p>The Personal Agent Protocol, announced by Sierra and Meta, is meant to let your agent sign in to a site and act with the permissions you grant. Its spec is not published yet. Tailor already works on the same idea: you approve what is shared, and you get a receipt.</p>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <section id="install" style="padding-top: 0">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="label">Try it</p>
+        <h2>Install from source</h2>
+        <p>Tailor is not in the Chrome Web Store yet. You need Node.js, Chrome and an Anthropic API key.</p>
+      </div>
+      <div class="install">
+        <div class="terminal">
+          <div class="terminal-head">
+            <span class="label">Terminal</span>
+            <button class="copy" id="copy-build" type="button">Copy</button>
+          </div>
+<pre id="build-cmd">git clone https://github.com/petr1264k/tailor
+cd tailor
+npm install
+npm run build</pre>
+        </div>
+        <div>
+          <ol>
+            <li>Open <code>chrome://extensions</code>, turn on <strong>Developer mode</strong>, click <strong>Load unpacked</strong> and pick the <code>dist</code> folder.</li>
+            <li>Click the Tailor icon and paste your Anthropic API key. It stays in your browser and is only sent to api.anthropic.com.</li>
+            <li>Open the profile page and drop in <code>conversations.json</code> from your ChatGPT or Claude data export.</li>
+            <li>Visit any page and press <strong>Tailor</strong>.</li>
+          </ol>
+          <p class="note-small">Full details are in the <a href="https://github.com/petr1264k/tailor#run-it">README</a>.</p>
+        </div>
+      </div>
+    </div>
+  </section>
 </main>
 
 <footer>
@@ -214,8 +323,17 @@ footer .brand img { width: 22px; height: 22px; }
       <img src="logo.png" width="22" height="22" alt="">
       Tailor
     </span>
-    <span>Built in one day at The Living Internet Build Day (AGI House × Coframe), Oct 10 2026. Not in the Chrome Web Store yet.</span>
+    <span>Built in one day at The Living Internet Build Day (AGI House × Coframe), Oct 10 2026. Source on <a href="https://github.com/petr1264k/tailor">GitHub</a>.</span>
   </div>
 </footer>
+<script>
+  // Copy the build commands; if the clipboard is refused, select the text so it can be copied by hand.
+  document.getElementById('copy-build').addEventListener('click', function () {
+    var btn = this, pre = document.getElementById('build-cmd')
+    function done(label) { btn.textContent = label; setTimeout(function () { btn.textContent = 'Copy' }, 1600) }
+    function select() { var r = document.createRange(); r.selectNodeContents(pre); var s = getSelection(); s.removeAllRanges(); s.addRange(r); done('Selected') }
+    try { navigator.clipboard.writeText(pre.textContent).then(function () { done('Copied') }, select) } catch (e) { select() }
+  })
+</script>
 </body>
 </html>

@@ -24,6 +24,9 @@ async function activeTabId(): Promise<number | undefined> {
 export function App() {
   const [key, setKey] = useState('')
   const [saved, setSaved] = useState(false)
+  /** A key is in storage (null until settings load). With a key, the key fields stay folded until "Change". */
+  const [hasKey, setHasKey] = useState<boolean | null>(null)
+  const [editingKey, setEditingKey] = useState(false)
   const [apiTest, setApiTest] = useState<string | null>(null)
   const [profileName, setProfileName] = useState('')
   const [autoTailor, setAutoTailor] = useState(true)
@@ -36,6 +39,7 @@ export function App() {
       const s = await attempt(getSettings)
       if (!s.ok) return setError(s.error)
       setKey(s.value.anthropicKey ?? '')
+      setHasKey(!!s.value.anthropicKey)
       setAutoTailor(s.value.autoTailorOnLoad)
       setProfileName(s.value.activeProfileId)
       const list = await attempt(listProfiles)
@@ -65,11 +69,21 @@ export function App() {
   }
 
   async function saveKey() {
+    const trimmed = key.trim()
     const r = await attempt(() =>
-      setSettings({ anthropicKey: key.trim() || undefined }),
+      setSettings({ anthropicKey: trimmed || undefined }),
     )
-    if (r.ok) setSaved(true)
-    else setError(r.error)
+    if (!r.ok) return setError(r.error)
+    setSaved(true)
+    setHasKey(!!trimmed)
+    setEditingKey(false)
+  }
+
+  async function cancelKeyEdit() {
+    const s = await attempt(getSettings)
+    if (s.ok) setKey(s.value.anthropicKey ?? '')
+    setSaved(false)
+    setEditingKey(false)
   }
 
   async function toggleAutoTailor(on: boolean) {
@@ -136,22 +150,39 @@ export function App() {
             <input type="checkbox" checked={autoTailor} onChange={(e) => void toggleAutoTailor(e.target.checked)} />
             Tailor pages automatically as they load
           </label>
-          <label className="field">
-            <span className="hint">Anthropic API key (stays in this browser)</span>
-            <input
-              type="password"
-              value={key}
-              onChange={(e) => {
-                setKey(e.target.value)
-                setSaved(false)
-              }}
-              placeholder="sk-ant-…"
-            />
-          </label>
-          <div className="pair">
-            <button onClick={() => void saveKey()}>{saved ? 'Saved' : 'Save key'}</button>
-            <button onClick={testKey}>Test API key</button>
-          </div>
+          {hasKey && !editingKey && (
+            <div className="key-row">
+              <span className="hint">Anthropic API key saved</span>
+              <button className="link" onClick={() => setEditingKey(true)}>
+                Change
+              </button>
+            </div>
+          )}
+          {hasKey === false || editingKey ? (
+            <>
+              <label className="field">
+                <span className="hint">Anthropic API key (stays in this browser)</span>
+                <input
+                  type="password"
+                  value={key}
+                  onChange={(e) => {
+                    setKey(e.target.value)
+                    setSaved(false)
+                  }}
+                  placeholder="sk-ant-…"
+                />
+              </label>
+              <div className="pair">
+                <button onClick={() => void saveKey()}>{saved ? 'Saved' : 'Save key'}</button>
+                <button onClick={testKey}>Test API key</button>
+              </div>
+              {editingKey && (
+                <button className="link key-cancel" onClick={() => void cancelKeyEdit()}>
+                  Cancel
+                </button>
+              )}
+            </>
+          ) : null}
           {apiTest && <pre className="api-out">{apiTest}</pre>}
         </div>
       </div>

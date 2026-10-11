@@ -24,6 +24,9 @@ button.big { padding: 13px 18px; font-size: 15.5px; border-radius: var(--r-xl); 
 .status-line { font-weight: 500; }
 .hint { color: var(--muted); font-size: 13px; }
 .check { display: flex; align-items: center; gap: 9px; font-size: 14px; }
+.key-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.key-row button.link, button.key-cancel { font-size: 13px; }
+button.key-cancel { justify-self: start; }
 .field { display: grid; gap: 6px; }
 .field input { width: 100%; font-family: var(--mono); font-size: 13px; letter-spacing: 0.02em; }
 .api-out {

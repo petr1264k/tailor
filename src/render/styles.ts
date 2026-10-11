@@ -286,7 +286,6 @@ export const INPLACE_CSS = `
   .note::after { content: ''; position: absolute; right: 0; bottom: 0; width: 22px; height: 22px; z-index: -1;
                  background: linear-gradient(to top left, transparent 48%, rgba(31,33,47,.24) 50%, rgba(255,255,255,.65) 100%); }
   .note.is-warn { --paper-0: #ffe8dc; --paper: #ffc9ae; --paper-2: #ffb08a; --ink: #4a1d05; --label: #9a3d0d; }
-  .note.is-move { --paper-0: #e4fcec; --paper: #bdf2d0; --paper-2: #9ce6b8; --ink: #0f3d2b; --label: #0f7b4f; }
   .note.is-site { --paper-0: #e9f1ff; --paper: #cbdcff; --paper-2: #b2c9fb; --ink: #1f212f; --label: #2e4f9e; max-width: 460px; padding-right: 24px; }
   /* A one-line note (the kind stuck on a product card): smaller paper, shorter tape, bolder line, so a dozen of them
      read as quick marks on the cards and not as a dozen paragraphs. inplace.ts sets is-short / is-compact by text length. */

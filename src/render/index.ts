@@ -40,7 +40,7 @@ import {
 } from './inplace'
 
 export { PANEL_CSS, INPLACE_CSS, WHY_CSS, BADGE_CSS } from './styles'
-export { appliedLabels, applyInPlace, foldTargets, hasInPlace, inPlaceShown, markedElements, playInPlace, whyChip } from './inplace'
+export { appliedLabels, applyInPlace, hasInPlace, inPlaceShown, markedElements, playInPlace, whyChip } from './inplace'
 export type { InPlaceTarget, PlayOptions, ResolveSegment, ResolveRegion } from './inplace'
 export { MOTION } from './live'
 export { buildScorecard, countEdits, countWords, measureSide, scorecardChip, scorecardLine, scorecardRows } from './scorecard'
@@ -400,8 +400,8 @@ export function renderTailored(page: TailoredPage, facts: Fact[], ui: TailorUi, 
 }
 
 /**
- * Demo mode: like renderTailored for a page with edits, but the changes PLAY (§9: "the page re-fits itself"): promotes
- * fly into place, then every change top to bottom with its motion, the window following. The bar shows "Tailored" from
+ * Demo mode: like renderTailored for a page with edits, but the changes PLAY (§9: "the page re-fits itself"): promoted
+ * cards fly to the front of their list, then every change top to bottom with its motion, the window following. The bar shows "Tailored" from
  * the start so Original can stop the run. Resolves with whether the tailored view is on screen at the end (false when
  * the user flipped to Original mid-run). Pages without edits fall back to renderTailored (the panel) and resolve true.
  */

@@ -1,23 +1,25 @@
 /**
  * In-place rendering (CONTEXT.txt §3.7): apply a TailoredPage's edits to the site's OWN DOM. Owner: Petr.
  *
- * The site keeps its look. A rewrite swaps the text inside the site's element (same tag, same site styles). A hide
- * HIDES NOTHING (Petr, Oct 10: "don't hide stuff, just reorder", "keep move downs just dont delete sections"): the
- * smallest container that holds only those elements moves to the end of its parent, so what does not matter to this
- * person sits below what does, an outside ad included. A card whose move would carry it out of sight (into the clipped
- * tail of a carousel) stays where it is: that would read as a deletion. No reason is ever shown. A note is a
+ * The site keeps its look, and its SECTIONS STAY WHERE THEY ARE (Petr, Oct 10 evening: "no more moving around
+ * sections, but you can move product placement in the same section"). The only thing that ever moves is a card
+ * inside its own list: a promote puts it at the front, a hide puts it at the back ("don't hide stuff, just reorder").
+ * A promote or hide that names a region or a run of elements is not applied (code decides; src/tailor/edit.ts drops
+ * them before the gate). Nothing is ever removed or display:none'd; a card whose move to the back would carry it out
+ * of sight (into the clipped tail of a carousel) stays where it is, since to the eye that is a deletion. No reason is
+ * ever shown for a move. A rewrite swaps the text inside the site's element (same tag, same site styles). A note is a
  * sticky note STUCK ON the element it is about: it lives in an overlay (absolutely positioned in
  * <body>), pinned to a corner of the element's box, and follows the element through layout changes (see `placePin`).
  * Each change carries a "why" chip. Original ↔ Tailored puts every original node back: `off()` undoes exactly what
- * `on()` did. In demo mode the changes PLAY instead of landing at once (`playInPlace`): promotes fly to their new spot
- * first, then everything else top to bottom, each with its own motion (live.ts: a rewrite is retyped,
+ * `on()` did. In demo mode the changes PLAY instead of landing at once (`playInPlace`): promoted cards fly to the front
+ * of their list first, then everything else top to bottom, each with its own motion (live.ts: a rewrite is retyped,
  * backspace then keys), the window going only to the element being changed and checking it got there.
  *
  * Everything we insert is a custom element (<tailor-note>, <tailor-badge>, <tailor-why>) with its own shadow root, so
  * our styles never reach the site and the site's rarely reach us. Text enters the DOM only via textContent /
  * createTextNode. NEVER innerHTML anywhere in src/render.
  */
-import type { BlockType, Fact, PageEdit, PageRegion, PageSegment, RegionRole, TailoredPage } from '@/types'
+import type { BlockType, Fact, PageEdit, PageRegion, PageSegment, TailoredPage } from '@/types'
 import type { InteractionEvent, TailorUi } from './index'
 import { displayHost, el, evidenceLine, splitSiteClaims } from './blocks'
 import { BADGE_CSS, INPLACE_CSS, WHY_CSS } from './styles'
@@ -57,11 +59,11 @@ export interface InPlaceTarget {
   /** The page map (PageContent.regions) and how to find its elements, when the page has one. */
   regions?: PageRegion[]
   resolveRegion?: ResolveRegion
-  /** Promoted regions land after the top run of regions with this role (SiteProfile.policy.promoteAfterRole). */
-  promoteAfterRole?: RegionRole
 }
 
 const isMapId = (id: string): boolean => /^[ri]\d+$/.test(id)
+/** A card of the page map (i#): the only thing a promote or a hide may move. Regions (r#) and elements (s#) stay put. */
+const isItemId = (id: string): boolean => /^i\d+$/.test(id)
 
 /**
  * One change to the page. `on` applies it, `off` undoes exactly what `on` did, `play` applies it with its motion.
@@ -226,7 +228,7 @@ function whyRow(facts: Fact[], blockType: BlockType, report: (e: InteractionEven
   return row
 }
 
-const KICKER: Record<'note' | 'warn' | 'promote', string> = { note: 'For you', warn: 'Heads up', promote: 'Moved up for you' }
+const KICKER: Record<'note' | 'warn', string> = { note: 'For you', warn: 'Heads up' }
 
 /** Leans a note picks from: some straight, most a little off, like notes stuck on by hand. Paired with a few px of jitter. */
 const TILTS = ['-2.2deg', '0deg', '1.6deg', '-0.9deg', '2.4deg', '0deg', '-1.4deg', '1.1deg']
@@ -249,15 +251,15 @@ function stickyNote(host: HTMLElement, paper: HTMLElement, seed: string, compact
   return sticky
 }
 
-/** A personal note (for_you), warning, or "moved up" sticky, stuck onto the page. ✕ hides it and reports ignore. */
-function noteHost(edit: Extract<PageEdit, { op: 'note' | 'warn' | 'promote' }>, state: InPlaceState, report: (e: InteractionEvent) => void): HTMLElement {
+/** A personal note (for_you) or warning sticky, stuck onto the page. ✕ hides it and reports ignore. */
+function noteHost(edit: Extract<PageEdit, { op: 'note' | 'warn' }>, state: InPlaceState, report: (e: InteractionEvent) => void): HTMLElement {
   const { host, root } = shadowHost('tailor-note', INPLACE_CSS)
   const blockType = BLOCK_TYPE_OF[edit.op]
   host.dataset['blockType'] = blockType
   host.dataset['op'] = edit.op
-  const text = edit.op === 'promote' ? edit.reason : edit.text
+  const text = edit.text
   const short = text.length <= SHORT_NOTE_CHARS
-  const note = el('div', edit.op === 'warn' ? 'note is-warn' : edit.op === 'promote' ? 'note is-move' : 'note')
+  const note = el('div', edit.op === 'warn' ? 'note is-warn' : 'note')
   if (short) note.classList.add('is-short')
   if (edit.op === 'warn') note.setAttribute('role', 'note')
   note.append(el('div', 'kicker', KICKER[edit.op]), el('p', 'text', text))
@@ -474,12 +476,6 @@ function stopWatching(state: InPlaceState): void {
   state.watch = { ro: null, schedule: () => {}, timer: null }
 }
 
-function commonAncestor(els: Element[]): Element | null {
-  let node: Element | null = els[0] ?? null
-  while (node && !els.every((e) => node!.contains(e))) node = node.parentElement
-  return node
-}
-
 /**
  * Would moving `t` to the end of its parent take it out of sight? A card in a carousel (overflow hidden, only the first
  * few slides showing) goes from on screen to behind the clip: to the eye that is a deletion, not a move-down. Measured
@@ -498,26 +494,6 @@ export function hiddenByMove(t: Element): boolean {
   const nowHidden = clippedAway(t.getBoundingClientRect(), clips)
   parent.insertBefore(t, next)
   return nowHidden
-}
-
-/**
- * The elements to hide for a group: the highest ancestor that holds only this group's segments (so a whole
- * testimonials <section> folds, images and all), else each element on its own. Never body/html/main/article.
- */
-export function foldTargets(group: Element[], allSegmentEls: Element[]): Element[] {
-  if (group.length === 0) return []
-  const inGroup = new Set(group)
-  const stopAt = (e: Element): boolean => e === document.body || e === document.documentElement || e.matches('main, article, [role="main"]')
-  let best: Element | null = null
-  let node = commonAncestor(group)
-  while (node && !stopAt(node)) {
-    const current = node
-    const exclusive = allSegmentEls.every((seg) => !current.contains(seg) || inGroup.has(seg))
-    if (!exclusive) break
-    best = current
-    node = current.parentElement
-  }
-  return best ? [best] : group
 }
 
 // ───────────────────────────── apply / show / hide ─────────────────────────────
@@ -571,7 +547,6 @@ export function applyInPlace(page: TailoredPage, facts: Fact[], ui: TailorUi, ta
     const seg = state.bySegment.get(id)
     return seg ? state.resolve(seg) : null
   }
-  const allSegmentEls = target.segments.map((s) => state.resolve(s)).filter((e): e is Element => !!e)
   const edits = page.edits ?? []
   const regions = target.regions ?? []
   const regionTitle = (id: string): string => regions.find((r) => r.id === id)?.title ?? regions.flatMap((r) => r.items ?? []).find((i) => i.id === id)?.title ?? ''
@@ -579,58 +554,40 @@ export function applyInPlace(page: TailoredPage, facts: Fact[], ui: TailorUi, ta
     state.applied.push({ step, active: false })
   }
 
-  // 0. Promotes: a region moves to the top of the content (after the hero run), a card to the front of its list.
-  //    Undo puts the node back between its original neighbours. Applied first, so hides and notes see the final order.
-  const pinnedRole = target.promoteAfterRole
-  let topRun = 0
-  while (pinnedRole && topRun < regions.length && regions[topRun]!.role === pinnedRole) topRun++
-  const firstMovable = regions.slice(topRun).map((r) => state.resolveRegion(r.id)).find((e): e is Element => !!e) ?? null
-  let lastPromotedRegion: Element | null = null
+  // 0. Promotes: a card moves to the front of its own list (the first promoted lands first, the next right after it).
+  //    Sections never move (Petr, Oct 10 evening): a promote that names a region is not applied. Undo puts the card
+  //    back between its original neighbours. Applied first, so hides and notes see the final order.
   const lastPromotedIn = new Map<Element, Element>() // list container → the card promoted last into it
   for (const edit of edits) {
-    if (edit.op !== 'promote') continue
+    if (edit.op !== 'promote' || !isItemId(edit.id)) continue
     const element = resolveId(edit.id)
-    if (!element) continue
-    const isRegion = edit.id.startsWith('r')
-    const parent = element.parentElement
-    if (!parent) continue
+    if (!element?.parentElement) continue
     let origParent: Element | null = null
     let origNext: Node | null = null
-    const strip = isRegion ? noteHost(edit, state, report) : badgeHost('Moved up for you', edit.reason, edit.factIds, state, report)
-    /** Where the element lands: after the last promoted region (else the first movable one), or the front of its list. */
-    const destination = (): Element | null => (isRegion ? lastPromotedRegion ?? firstMovable : element.parentElement)
+    const strip = badgeHost('Moved up for you', edit.reason, edit.factIds, state, report)
     push({
       op: 'promote',
       label: `Moved up: ${shortLabel(regionTitle(edit.id) || edit.reason)}`,
-      target: destination,
+      target: () => element.parentElement,
       on: () => {
-        origParent = element.parentElement
+        const list = element.parentElement!
+        origParent = list
         origNext = element.nextSibling
-        if (isRegion) {
-          const anchor = lastPromotedRegion ? lastPromotedRegion.nextSibling : firstMovable
-          if (anchor && anchor !== element && anchor.parentNode) anchor.parentNode.insertBefore(element, anchor)
-          else if (!anchor && firstMovable?.parentElement && !lastPromotedRegion) firstMovable.parentElement.append(element)
-          lastPromotedRegion = element
-          pinNote(strip, () => element, state)
-        } else {
-          const list = element.parentElement!
-          const prev = lastPromotedIn.get(list)
-          const anchor = prev ? prev.nextSibling : list.firstChild
-          if (anchor !== element) list.insertBefore(element, anchor)
-          lastPromotedIn.set(list, element)
-          badgeSlot(element).append(strip)
-        }
+        const prev = lastPromotedIn.get(list)
+        const anchor = prev ? prev.nextSibling : list.firstChild
+        if (anchor !== element) list.insertBefore(element, anchor)
+        lastPromotedIn.set(list, element)
+        badgeSlot(element).append(strip)
       },
       off: () => {
         strip.remove()
         if (origParent) origParent.insertBefore(element, origNext && origNext.parentNode === origParent ? origNext : null)
-        if (isRegion) lastPromotedRegion = null
-        else lastPromotedIn.clear()
+        lastPromotedIn.clear()
       },
-      // The element flies from where it was to where it lands; what it displaces slides out of the way. Its strip
-      // (the "moved up" note or badge) stays out of sight until the element has settled, then is pressed on.
+      // The card flies from where it was to the front of its list; the cards it passes slide out of the way. Its
+      // "moved up" badge stays out of sight until the card has settled, then pops on.
       play: async (run, on) => {
-        const scope = flipScope(element, destination()?.parentElement ?? element.parentElement)
+        const scope = flipScope(element, element.parentElement)
         let release = (): void => {}
         void glow(run, element, MOTION.flip + MOTION.glowTail)
         await flip(run, scope, () => {
@@ -638,9 +595,9 @@ export function applyInPlace(page: TailoredPage, facts: Fact[], ui: TailorUi, ta
           release = hold(run, strip, { opacity: 0 })
         })
         if (run.cancelled) return release()
-        placeAll(state) // the pin was placed while the region was still in flight
+        placeAll(state) // a note pinned to the card was placed while it was in flight
         release()
-        await (isRegion ? noteIn(run, strip) : badgeIn(run, strip))
+        await badgeIn(run, strip)
       },
     })
   }
@@ -681,17 +638,15 @@ export function applyInPlace(page: TailoredPage, facts: Fact[], ui: TailorUi, ta
     })
   }
 
-  // 2. Hides. Nothing is ever removed or display:none'd, not even a code-detected outside ad (Petr, Oct 10 6 pm:
-  //    "keep move downs just dont delete sections completely"): the part (the smallest exclusive container; a region
-  //    or item is one already) moves to the end of its parent, below what matters to this person, where it stays
-  //    readable. A card that the move would carry behind a carousel's clip stays put (hiddenByMove). The label
-  //    carries no reason. Undo puts each moved node back between its original neighbours (in reverse, so neighbours
-  //    that moved too are back first). In demo mode the window follows the part down to where it landed.
+  // 2. Hides: the cards named (item ids) move to the back of their own list, below what matters to this person, where
+  //    they stay readable. Nothing is ever removed or display:none'd ("keep move downs just dont delete sections"),
+  //    and sections never move (Petr, Oct 10 evening: "no more moving around sections"): region and element ids in a
+  //    hide are not applied. A card that the move would carry behind a carousel's clip stays put (hiddenByMove). The
+  //    label carries no reason. Undo puts each moved card back between its original neighbours (in reverse, so
+  //    neighbours that moved too are back first). In demo mode the window follows the card to where it landed.
   for (const edit of edits) {
     if (edit.op !== 'hide') continue
-    const direct = edit.ids.filter(isMapId).map(resolveId).filter((e): e is Element => !!e)
-    const group = edit.ids.filter((id) => !isMapId(id)).map(resolveId).filter((e): e is Element => !!e)
-    const moved = [...direct, ...foldTargets(group, allSegmentEls).filter((t) => !direct.some((d) => d.contains(t)))].filter((t) => !hiddenByMove(t))
+    const moved = [...new Set(edit.ids.filter(isItemId))].map(resolveId).filter((e): e is Element => !!e?.parentElement && !hiddenByMove(e))
     if (moved.length === 0) continue
     const origin = new Map<Element, { parent: Element; next: Node | null }>()
     push({
@@ -713,7 +668,7 @@ export function applyInPlace(page: TailoredPage, facts: Fact[], ui: TailorUi, ta
         }
         origin.clear()
       },
-      // The part slides down out of the way and what followed it slides up. Then the window follows it to where it
+      // The card slides to the back of its list and the cards behind it slide forward. Then the window follows it to where it
       // landed and it glows there, so the audience sees it is still on the page, just lower (Petr, Oct 10: "if an
       // element is rearranged the scroll in demo should show where it was put"). The next step brings the window back.
       play: async (run, on) => {
@@ -859,7 +814,7 @@ export interface PlayOptions {
 }
 
 /**
- * Plays the applied changes instead of showing them at once (demo mode): promotes fly to their new spot first, then
+ * Plays the applied changes instead of showing them at once (demo mode): promoted cards fly to the front first, then
  * everything else plays top to bottom, each change brought on screen first and changes already on screen cascading a
  * beat apart; a move-down plays alone and the window follows the part to where it landed; the window ends back at the top. The window moves only to a change, never over the whole page first:
  * on a long storefront (anker.com) a warm-up pass to the bottom and back read as a dash to the bottom of the page.
@@ -915,8 +870,8 @@ export async function playInPlace(ui: TailorUi, opts: PlayOptions = {}): Promise
 }
 
 /**
- * The elements a tailored page marks for this person, in edit order: promote targets, badge targets, note / warn
- * anchors. The scorecard measures where they sit before and after the edits (src/render/scorecard.ts).
+ * The elements a tailored page marks for this person, in edit order: promoted cards, badge targets, note / warn
+ * anchors (a promote naming a region is never applied, so it marks nothing). The scorecard measures where they sit before and after the edits (src/render/scorecard.ts).
  */
 export function markedElements(page: TailoredPage, target: InPlaceTarget): Element[] {
   const bySegment = new Map(target.segments.map((s) => [s.id, s]))
@@ -927,7 +882,7 @@ export function markedElements(page: TailoredPage, target: InPlaceTarget): Eleme
   }
   const out: Element[] = []
   for (const e of page.edits ?? []) {
-    const id = e.op === 'promote' || e.op === 'badge' ? e.id : e.op === 'note' || e.op === 'warn' ? e.after : null
+    const id = e.op === 'promote' ? (isItemId(e.id) ? e.id : null) : e.op === 'badge' ? e.id : e.op === 'note' || e.op === 'warn' ? e.after : null
     if (!id) continue
     const element = resolveId(id)
     if (element && !out.includes(element)) out.push(element)

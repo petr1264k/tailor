@@ -238,7 +238,7 @@ export function badgeIn(run: Run, host: Element): Promise<() => void> {
 
 /**
  * FLIP: records where `scope` sits, runs `move` (which changes the DOM), then slides every element that moved from its
- * old spot to its new one. The promoted region flies up from screens below; the ones it displaces slide down.
+ * old spot to its new one. A promoted card flies to the front of its list; the cards it passes slide out of the way.
  */
 export async function flip(run: Run, scope: Element[], move: () => void): Promise<void> {
   if (run.cancelled) return

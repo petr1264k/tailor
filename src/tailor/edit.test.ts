@@ -76,7 +76,7 @@ describe('checkEdits', () => {
     expect(out.find((e) => e.op === 'note')).toEqual({ op: 'note', after: 's1', text: 'n1', factIds: ['f-ps5'] })
     expect(out.find((e) => e.op === 'rewrite' && e.id === 's2')).toEqual({ op: 'rewrite', id: 's2', text: 'Short.', factIds: ['f-simple'] })
     expect(out.find((e) => e.op === 'rewrite' && e.id === 's1')).toEqual({ op: 'rewrite', id: 's1', text: 'Plain.' })
-    expect(out.at(-1)).toEqual({ op: 'hide', ids: ['s3'], label: 'Praise', reason: 'filler' })
+    expect(out.some((e) => e.op === 'hide')).toBe(false) // a hide of elements moves nothing: sections stay put
   })
 
   it('drops notes, warns, badges and promote reasons that dismiss the page as not for this person (rule 5b)', () => {
@@ -157,16 +157,20 @@ describe('page map: prompt, checkEdits caps, editsToBlocks', () => {
     expect(buildEditUserPrompt(content, facts)).not.toContain('Page map')
   })
 
-  it('checkEdits keeps promotes and badges only with known facts, one promote per target, within the caps', () => {
+  it('checkEdits keeps promotes only on cards with known facts, one per card; hides keep only cards that are not promoted', () => {
     const many: PageEdit[] = [
-      { op: 'promote', id: 'r2', reason: 'first', factIds: ['f-ps5'] },
-      { op: 'promote', id: 'r2', reason: 'again', factIds: ['f-ps5'] },
+      { op: 'promote', id: 'r2', reason: 'a region never moves', factIds: ['f-ps5'] },
+      { op: 'promote', id: 'i2', reason: 'first', factIds: ['f-ps5'] },
+      { op: 'promote', id: 'i2', reason: 'again', factIds: ['f-ps5'] },
       { op: 'promote', id: 'i1', reason: 'no evidence', factIds: ['f-nope'] },
+      { op: 'hide', ids: ['r1', 's3', 'i2', 'i3', 'i3'], label: 'Mixed', reason: 'x' },
+      { op: 'hide', ids: ['r1', 's3'], label: 'Only sections', reason: 'x' },
       ...Array.from({ length: 8 }, (_, i) => ({ op: 'badge' as const, id: `i${i + 1}`, label: `b${i}`, factIds: ['f-ps5'] })),
       { op: 'badge', id: 'i9', label: 'no evidence', factIds: [] },
     ]
     const out = checkEdits(many, facts)
-    expect(out.filter((e) => e.op === 'promote')).toEqual([{ op: 'promote', id: 'r2', reason: 'first', factIds: ['f-ps5'] }])
+    expect(out.filter((e) => e.op === 'promote')).toEqual([{ op: 'promote', id: 'i2', reason: 'first', factIds: ['f-ps5'] }])
+    expect(out.filter((e) => e.op === 'hide')).toEqual([{ op: 'hide', ids: ['i3'], label: 'Mixed', reason: 'x' }])
     expect(out.filter((e) => e.op === 'badge')).toHaveLength(6)
   })
 

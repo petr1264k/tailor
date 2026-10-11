@@ -3,9 +3,10 @@
  * after the edits, at the same scroll position: how far down the first thing marked for this person sits, how many
  * marked things are on the first screen, and how many words the page shows. Pure functions apart from reading layout.
  *
- * "First match" = the first element the tailored page marks for this person (a promoted region or card, a badge, a
- * note's anchor), in document order of the ORIGINAL page. Its position is where a reader would have had to scroll to.
- * Nothing is hidden any more (hides move parts down), so the words row shows only when a rewrite changed the count.
+ * "First match" = the first element the tailored page marks for this person (a promoted card, a badge, a note's
+ * anchor), in document order of the ORIGINAL page. Its position is where a reader would have had to scroll to.
+ * Nothing is hidden (a hide moves a card to the back of its list), so the words row shows only when a rewrite changed
+ * the count.
  */
 import type { TailoredPage } from '@/types'
 import { isVisible } from '@/tailor/segments'

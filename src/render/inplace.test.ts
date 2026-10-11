@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Fact, PageEdit, PageSegment, TailoredPage } from '@/types'
 import { collectSegments, resolveSegment } from '@/tailor/segments'
 import { mountTailorButton, playTailored, renderFromSite, renderTailored, showOriginal, showTailored, type RenderCallbacks, type TailorUi } from './index'
-import { appliedLabels, foldTargets, markedElements, noteAnchor } from './inplace'
+import { appliedLabels, markedElements, noteAnchor } from './inplace'
 import { buildScorecard, countWords, measureSide, scorecardChip, scorecardLine, scorecardRows } from './scorecard'
 
 const ps5: Fact = {
@@ -93,40 +93,25 @@ describe('in-place edits', () => {
     expect(document.body.querySelector('style')).toBeNull()
   })
 
-  it('a hide moves the whole exclusive section (image included) to the bottom of its parent; nothing is hidden', () => {
+  it('a hide that names elements moves nothing: sections stay where they are and nothing is hidden', () => {
     setup()
+    const before = document.querySelector('main')!.innerHTML
     renderTailored(page([{ op: 'hide', ids: [byText('Loved'), byText('Thousands')], label: 'Customer praise', reason: 'you skip marketing' }]), [], ui!, target())
-    const main = document.querySelector('main')!
     const section = document.getElementById('praise')!
-    expect(main.lastElementChild).toBe(section)
+    expect(section.nextElementSibling?.id).toBe('specs') // where it was
     expect(section.hasAttribute('style')).toBe(false) // not display:none, not touched at all
-    expect(section.querySelector('img')).not.toBeNull()
-    expect(hosts('tailor-fold')).toHaveLength(0) // no stub, nothing of ours left where it stood
-    expect(appliedLabels(ui!)).toEqual(['Moved down: Customer praise']) // never the reason
-    showOriginal(ui!)
-    expect(section.nextElementSibling?.id).toBe('specs') // back between its original neighbours
+    expect(hosts('tailor-fold')).toHaveLength(0)
+    expect(appliedLabels(ui!)).toEqual([]) // not a change, not a step
+    expect(document.querySelector('main')!.innerHTML).toBe(before)
   })
 
-  it('an outside ad (decided by code) moves down like anything else: nothing is ever display:none', () => {
+  it('an outside ad that is a section (decided by code) stays where it is too: never display:none, never moved', () => {
     setup(`<main><h1>Title here</h1><p id="body">Real content here.</p><div id="ad" class="sponsored"><p>Sponsored: buy the thing today.</p></div><p id="last">Last paragraph here.</p></main>`)
     renderTailored(page([{ op: 'hide', ids: [byText('Sponsored')], label: 'Sponsored unit', reason: 'an outside ad' }]), [], ui!, target())
     const ad = document.getElementById('ad') as HTMLElement
     expect(ad.hasAttribute('style')).toBe(false)
-    expect(document.querySelector('main')!.lastElementChild).toBe(ad) // moved down, still on the page
-    expect(appliedLabels(ui!)).toEqual(['Moved down: Sponsored unit'])
-    showOriginal(ui!)
-    expect(ad.hasAttribute('style')).toBe(false)
     expect(ad.nextElementSibling?.id).toBe('last')
-  })
-
-  it('foldTargets hides elements one by one when their common ancestor holds other segments', () => {
-    setup()
-    const intro = document.getElementById('intro')!
-    const specs = document.getElementById('specs')!
-    const all = segments.map((s) => elements.get(s.id)!)
-    expect(foldTargets([intro, specs], all)).toEqual([intro, specs])
-    const praise = [elements.get(byText('Loved'))!, elements.get(byText('Thousands'))!]
-    expect(foldTargets(praise, all)).toEqual([document.getElementById('praise')])
+    expect(appliedLabels(ui!)).toEqual([])
   })
 
   it('a note is stuck on its anchor from the overlay; a note on a list item sticks to the list; ✕ reports ignore', () => {
@@ -197,7 +182,7 @@ describe('in-place edits', () => {
     }
   })
 
-  it('a note anchored inside a moved-down part stays on it', () => {
+  it('a note anchored in a section a hide names stays on it; the section stays put', () => {
     setup()
     renderTailored(
       page([
@@ -209,7 +194,7 @@ describe('in-place edits', () => {
       target(),
     )
     const praise = document.getElementById('praise')!
-    expect(document.querySelector('main')!.lastElementChild).toBe(praise)
+    expect(praise.nextElementSibling?.id).toBe('specs')
     expect(noteAnchor(hosts('tailor-note')[0]!)).toBe(praise.querySelector('p'))
   })
 
@@ -241,7 +226,7 @@ describe('in-place edits', () => {
     showTailored(ui!)
     expect(document.querySelector('h1')!.textContent).toContain('New headline.')
     expect(hosts('tailor-note')).toHaveLength(1)
-    expect(document.querySelector('main')!.lastElementChild!.id).toBe('praise')
+    expect(document.getElementById('praise')!.nextElementSibling?.id).toBe('specs') // a hide of elements moves nothing
     showOriginal(ui!)
     expect(document.querySelector('main')!.innerHTML).toBe(before)
   })
@@ -350,11 +335,11 @@ describe('in place: page map edits (promote, badge, region hide) and the scoreca
     { id: 'r4', role: 'membership' as const, title: 'Become a member today', segmentIds: [] },
   ]
   const byId: Record<string, string> = { r1: 'hero', r2: 'stats', r3: 'shelf', r4: 'member', i1: 'c1', i2: 'c2', i3: 'c3' }
-  const mapTarget = () => ({ ...target(), regions, resolveRegion: (id: string) => document.getElementById(byId[id] ?? '') , promoteAfterRole: 'hero' as const })
+  const mapTarget = () => ({ ...target(), regions, resolveRegion: (id: string) => document.getElementById(byId[id] ?? '') })
   const order = (parent: string) => Array.from(document.getElementById(parent)!.children).map((c) => c.id || c.tagName.toLowerCase()).filter((x) => !x.startsWith('tailor'))
   const wrapOrder = () => Array.from(document.querySelector('.wrap')!.children).map((c) => c.id || c.tagName.toLowerCase())
 
-  it('promotes a region to just after the hero run and a card to the front of its list, with an exact undo', () => {
+  it('promotes cards to the front of their list in the order given; a promote naming a region moves nothing; exact undo', () => {
     const { ui } = setup(STORE)
     const originalWrap = wrapOrder()
     const originalList = order('list')
@@ -362,20 +347,19 @@ describe('in place: page map edits (promote, badge, region hide) and the scoreca
       page([
         { op: 'promote', id: 'r3', reason: 'Power banks for your trips come first.', factIds: ['f1'] },
         { op: 'promote', id: 'i2', reason: 'Enough for your MacBook Pro.', factIds: ['f1'] },
+        { op: 'promote', id: 'i3', reason: 'Six ports for your desk.', factIds: ['f1'] },
       ]),
       [ps5],
       ui,
       mapTarget(),
     )
-    expect(wrapOrder()).toEqual(['hero', 'shelf', 'stats', 'member']) // the strip is in the overlay, not in the wrap
-    const strip = hosts('tailor-note')[0]!
-    expect(noteAnchor(strip)?.id).toBe('shelf')
-    expect(strip.shadowRoot!.querySelector('.kicker')!.textContent).toBe('Moved up for you')
-    expect(strip.shadowRoot!.querySelector('.text')!.textContent).toBe('Power banks for your trips come first.')
-    expect(order('list')).toEqual(['c2', 'c1', 'c3'])
+    expect(wrapOrder()).toEqual(originalWrap) // the shelf stays where it is
+    expect(hosts('tailor-note')).toHaveLength(0) // no "moved up" sticky for a section that did not move
+    expect(order('list')).toEqual(['c2', 'c3', 'c1'])
     const badge = document.querySelector('#c2 h3 tailor-badge') as HTMLElement
     expect(badge.shadowRoot!.querySelector('.badge-kicker')!.textContent).toBe('Moved up for you')
     expect(badge.shadowRoot!.querySelector('.badge-label')!.textContent).toBe('Enough for your MacBook Pro.')
+    expect(appliedLabels(ui).map((l) => l.split(':')[0])).toEqual(['Moved up', 'Moved up']) // the region promote is not a step
 
     showOriginal(ui)
     expect(wrapOrder()).toEqual(originalWrap)
@@ -383,19 +367,17 @@ describe('in place: page map edits (promote, badge, region hide) and the scoreca
     expect(document.querySelector('tailor-note, tailor-badge')).toBeNull()
 
     showTailored(ui)
-    expect(wrapOrder()).toEqual(['hero', 'shelf', 'stats', 'member'])
-    expect(order('list')).toEqual(['c2', 'c1', 'c3'])
+    expect(order('list')).toEqual(['c2', 'c3', 'c1'])
   })
 
-  it('tags a card with a badge inside its title, moves a region whole to the bottom, and undoes both', () => {
+  it('tags a card with a badge inside its title, moves a hidden card to the back of its list, leaves a hidden region where it is, and undoes all', () => {
     const { ui } = setup(STORE)
-    const member = document.getElementById('member') as HTMLElement
-    const parent = member.parentElement!
-    const orderBefore = [...parent.children].map((c) => c.id || c.tagName)
+    const orderBefore = wrapOrder()
+    const listBefore = order('list')
     renderTailored(
       page([
         { op: 'badge', id: 'i1', label: '45W: enough for your phone', factIds: ['f1'] },
-        { op: 'hide', ids: ['r4'], label: 'Membership pitch', reason: 'You buy, you do not join.' },
+        { op: 'hide', ids: ['r4', 'i1'], label: 'Membership pitch and the small charger', reason: 'You buy, you do not join.' },
       ]),
       [ps5],
       ui,
@@ -404,12 +386,16 @@ describe('in place: page map edits (promote, badge, region hide) and the scoreca
     const badge = document.querySelector('#c1 h3 tailor-badge') as HTMLElement
     expect(badge.shadowRoot!.querySelector('.badge-label')!.textContent).toBe('45W: enough for your phone')
     expect(badge.shadowRoot!.querySelectorAll('tailor-why')).toHaveLength(1)
-    expect(parent.lastElementChild).toBe(member) // moved down, still on the page
-    expect(member.hasAttribute('style')).toBe(false)
+    expect(wrapOrder()).toEqual(orderBefore) // the membership section stays where it is
+    expect(order('list')).toEqual(['c2', 'c3', 'c1']) // the card went to the back of its own list
+    expect(document.getElementById('member')!.hasAttribute('style')).toBe(false)
+    expect(document.getElementById('c1')!.hasAttribute('style')).toBe(false)
     expect(document.querySelector('tailor-fold')).toBeNull()
+    expect(appliedLabels(ui).filter((l) => l.startsWith('Moved down'))).toHaveLength(1)
     showOriginal(ui)
     expect(document.querySelector('tailor-badge')).toBeNull()
-    expect([...parent.children].map((c) => c.id || c.tagName)).toEqual(orderBefore)
+    expect(order('list')).toEqual(listBefore)
+    expect(wrapOrder()).toEqual(orderBefore)
   })
 
   it('skips map edits whose element is gone and still applies the rest', () => {
@@ -428,7 +414,7 @@ describe('in place: page map edits (promote, badge, region hide) and the scoreca
     expect(document.querySelectorAll('tailor-badge')).toHaveLength(1)
   })
 
-  it('markedElements lists promote and badge targets and note anchors once each, in edit order', () => {
+  it('markedElements lists promoted cards, badge targets and note anchors once each, in edit order; a region promote marks nothing', () => {
     setup(STORE)
     const marked = markedElements(
       page([
@@ -440,7 +426,7 @@ describe('in place: page map edits (promote, badge, region hide) and the scoreca
       ]),
       mapTarget(),
     )
-    expect(marked.map((e) => e.id || e.tagName.toLowerCase())).toEqual(['shelf', 'c2', 'p'])
+    expect(marked.map((e) => e.id || e.tagName.toLowerCase())).toEqual(['c2', 'p'])
   })
 })
 
@@ -517,27 +503,25 @@ describe('demo mode: the changes play top to bottom', () => {
       onStep: (label, i, n) => steps.push(`${i + 1}/${n} ${label}`),
     })
     expect(shown).toBe(true)
-    // Top to bottom: the headline, the list item, the praise section, the price line.
+    // Top to bottom: the headline, the list item, the price line. The hide of elements moves nothing and is not a step.
     expect(steps).toEqual([
-      '1/4 Rewrote: Maximize revenue from the demand you already have.',
-      '2/4 Tagged: Works with your PS5',
-      '3/4 Moved down: Customer praise',
-      '4/4 Note: Under your $1,500 budget.',
+      '1/3 Rewrote: Maximize revenue from the demand you already have.',
+      '2/3 Tagged: Works with your PS5',
+      '3/3 Note: Under your $1,500 budget.',
     ])
     expect(appliedLabels(ui!)).toEqual([
       'Rewrote: Maximize revenue from the demand you already have.',
-      'Moved down: Customer praise',
       'Note: Under your $1,500 budget.',
       'Tagged: Works with your PS5',
     ])
     expect(document.querySelector('h1')!.childNodes[0]?.textContent).toBe('Earn more from the visitors you already have.')
-    expect(document.querySelector('main')!.lastElementChild!.id).toBe('praise')
+    expect(document.getElementById('praise')!.nextElementSibling?.id).toBe('specs') // a hide of elements moves nothing
     expect(hosts('tailor-note')).toHaveLength(1)
     expect(hosts('tailor-badge')).toHaveLength(1)
     expect(document.body.innerHTML).toBe(instant)
   })
 
-  it('promotes play first, before the rest of the page', async () => {
+  it('promoted cards play first, before the rest of the page; a promote naming a region plays nothing', async () => {
     setup(`<main><section id="hero"><h1>Hero</h1><p>Welcome to the store.</p></section>
       <section id="cats"><h2>Categories</h2><p>Browse by room.</p></section>
       <section id="shelf"><h2>Must-Have</h2><ul><li><h3>Charger A</h3><p>65W, $39</p></li><li><h3>Charger B</h3><p>100W, $59</p></li></ul></section></main>`)
@@ -553,7 +537,7 @@ describe('demo mode: the changes play top to bottom', () => {
       i1: document.querySelectorAll('li')[0]!,
       i2: document.querySelectorAll('li')[1]!,
     }
-    const t = { ...target(), regions, resolveRegion: (id: string) => byId[id] ?? null, promoteAfterRole: 'hero' as const }
+    const t = { ...target(), regions, resolveRegion: (id: string) => byId[id] ?? null }
     const steps: string[] = []
     await playTailored(
       page([
@@ -566,8 +550,8 @@ describe('demo mode: the changes play top to bottom', () => {
       t,
       { scroll: false, pace: 0, onStep: (label) => steps.push(label) },
     )
-    expect(steps).toEqual(['Moved up: Must-Have', 'Moved up: Charger B', 'Rewrote: Welcome to the store.'])
-    expect(document.getElementById('hero')!.nextElementSibling?.id).toBe('shelf')
+    expect(steps).toEqual(['Moved up: Charger B', 'Rewrote: Welcome to the store.'])
+    expect(document.getElementById('hero')!.nextElementSibling?.id).toBe('cats') // the shelf stays where it is
     expect(document.querySelector('li h3')!.textContent).toBe('Charger B')
   })
 
@@ -590,7 +574,7 @@ describe('demo mode: the changes play top to bottom', () => {
     expect(hosts('tailor-note')).toHaveLength(0)
     expect(onInteraction).not.toHaveBeenCalledWith(expect.objectContaining({ kind: 'toggle_original' })) // showOriginal, not the user's toggle
     showTailored(ui!)
-    expect(document.querySelector('main')!.lastElementChild!.id).toBe('praise')
+    expect(document.getElementById('praise')!.nextElementSibling?.id).toBe('specs') // a hide of elements moves nothing
     expect(document.querySelector('h1')!.childNodes[0]?.textContent).toBe('Earn more from the visitors you already have.')
     expect(hosts('tailor-note')).toHaveLength(1)
     expect(hosts('tailor-badge')).toHaveLength(1)

@@ -18,7 +18,6 @@ import { send } from '@/messages'
 import type { Fact, Interaction, PageContent, TailoredPage } from '@/types'
 import { extractPage, resolveSegment, type ExtractedPage } from '@/tailor/extract'
 import { readAgentHooks, shareEndpoint } from '@/share/hooks'
-import { siteProfileFor } from '@/sites'
 import { toFromSiteBlock } from '@/share/block'
 import { DEMO_FALLBACK_REPLY } from '@/share/fallback'
 import {
@@ -108,8 +107,6 @@ function boot(): void {
         const e = regionElements.get(id)
         return e?.isConnected ? e : null
       }
-      const after = siteProfileFor(url).policy.promoteAfterRole
-      if (after) target.promoteAfterRole = after
     }
     return target
   }

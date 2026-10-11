@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tailor · pages that fit you</title>
+<meta name="description" content="Tailor turns your ChatGPT and Claude history into a private profile, and a Chrome extension rewrites any page for you. Every change cites your words, and code checks every fact.">
+<link rel="icon" href="favicon-64.png" type="image/png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>
+/* Tokens from the extension (src/ui/theme.css, based on coframe.com) plus the Tailor mark's own colours.
+   One light look on purpose, like the extension. Layout: centred column, indigo hero, then steps and principles. */
+:root {
+  --ink: #1f212f;
+  --ink-2: #353742;
+  --indigo: #2d2860;
+  --accent: #5a52ec;
+  --accent-soft: #eeedfd;
+  --bg: #f7f8fb;
+  --card: #ffffff;
+  --line: #d3ddf5;
+  --line-2: #e6e9f2;
+  --muted: #6b7084;
+  --muted-on-dark: #c3c9d9;
+  --mark: #1b5a44;      /* bottle green */
+  --chalk: #f1ece0;
+  --chalk-yellow: #f4d35e;
+  --sans: 'NB International Pro', 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, 'Helvetica Neue', Arial, sans-serif;
+  --mono: 'Basis Grotesque Mono Pro', 'SF Mono', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace;
+  --shadow-1: 0 0 0 1px rgba(0, 0, 0, 0.04), 0 2px 2px 0 rgba(0, 0, 0, 0.04);
+  --shadow-card: 0 20px 24px -4px rgba(15, 17, 30, 0.18), 0 8px 8px -4px rgba(15, 17, 30, 0.06);
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; font: 16px/1.6 var(--sans); color: var(--ink); background: var(--bg); -webkit-font-smoothing: antialiased; }
+h1, h2, h3, p { margin: 0; }
+h1, h2, h3 { font-weight: 500; letter-spacing: -0.015em; line-height: 1.15; text-wrap: balance; }
+a { color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+
+.wrap { width: 100%; max-width: 1080px; margin: 0 auto; padding-inline: 20px; }
+.label { font: 500 11.5px/1.3 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+
+/* Top bar */
+.top { background: var(--indigo); color: #fff; }
+.top .wrap { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-block: 18px; }
+.brand { display: inline-flex; align-items: center; gap: 10px; color: #fff; text-decoration: none; font-weight: 600; font-size: 18px; letter-spacing: -0.01em; }
+.brand img { width: 30px; height: 30px; flex: none; display: block; }
+.status { font: 500 11px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted-on-dark); border: 1px solid rgba(255,255,255,0.22); border-radius: 6px; padding: 7px 9px; white-space: nowrap; }
+
+/* Hero */
+.hero { background: var(--indigo); color: #fff; padding-block: 40px 88px; }
+.hero .wrap { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr); gap: 56px; align-items: center; }
+.hero .label { color: var(--muted-on-dark); }
+.hero h1 { font-size: clamp(34px, 5.2vw, 56px); margin-top: 14px; }
+.hero h1 em { font-style: normal; color: var(--chalk-yellow); }
+.lede { margin-top: 22px; font-size: 18px; color: #e3e6f0; max-width: 34em; }
+
+/* Profile card in the hero: one fact and the words it came from */
+.fact-card { margin: 0; background: var(--card); color: var(--ink); border-radius: 16px; box-shadow: var(--shadow-card); padding: 22px; display: grid; gap: 16px; min-width: 0; }
+.fact-card .row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.fact { font-size: 22px; font-weight: 500; letter-spacing: -0.01em; }
+.chip { display: inline-flex; align-items: center; gap: 6px; font: 500 11px/1 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 6px 10px; white-space: nowrap; }
+.why { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; background: #fbfbfe; display: grid; gap: 6px; }
+.why q { font-size: 15.5px; }
+.note { display: flex; gap: 12px; align-items: flex-start; border-top: 1px dashed var(--line); padding-top: 16px; font-size: 15px; color: var(--ink-2); }
+.note .pin { flex: none; width: 10px; height: 10px; margin-top: 7px; border-radius: 2px; background: var(--chalk-yellow); box-shadow: 0 0 0 2px var(--mark); }
+
+/* Sections */
+section { padding-block: 72px; }
+.section-head { display: grid; gap: 10px; max-width: 40em; margin-bottom: 36px; }
+.section-head h2 { font-size: clamp(26px, 3.4vw, 36px); }
+.section-head p { color: var(--muted); font-size: 17px; }
+
+/* Steps: a real sequence, so numbered */
+.steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; counter-reset: step; }
+.steps li { counter-increment: step; background: var(--card); border: 1px solid var(--line-2); border-radius: 12px; box-shadow: var(--shadow-1); padding: 22px 20px; display: grid; gap: 10px; align-content: start; min-width: 0; }
+.steps li::before { content: "0" counter(step); font: 500 12px/1 var(--mono); letter-spacing: 0.08em; color: var(--accent); }
+.steps h3 { font-size: 19px; }
+.steps p { color: var(--muted); font-size: 15px; }
+
+/* Principles */
+.rules { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 48px; border-top: 1px solid var(--line); }
+.rule { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 14px; padding-block: 24px; border-bottom: 1px solid var(--line); }
+.rule svg { width: 28px; height: 28px; color: var(--mark); }
+.rule h3 { font-size: 18px; margin-bottom: 6px; }
+.rule p { color: var(--muted); font-size: 15.5px; }
+
+/* Footer */
+footer { border-top: 1px solid var(--line); padding-block: 28px 40px; }
+footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px 24px; color: var(--muted); font-size: 14px; }
+footer .brand { color: var(--ink); font-size: 15px; }
+footer .brand img { width: 22px; height: 22px; }
+
+@media (max-width: 900px) {
+  .hero .wrap { grid-template-columns: minmax(0, 1fr); gap: 40px; }
+  .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+  .hero { padding-block: 28px 64px; }
+  .steps, .rules { grid-template-columns: minmax(0, 1fr); }
+  section { padding-block: 56px; }
+  .status { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="./" aria-label="Tailor home">
+      <img src="logo.png" width="30" height="30" alt="">
+      Tailor
+    </a>
+    <span class="status">Hackathon prototype</span>
+  </div>
+</header>
+
+<main>
+  <div class="hero">
+    <div class="wrap">
+      <div>
+        <p class="label">Chrome extension · The Living Internet Build Day, Oct 10 2026</p>
+        <h1>Your ChatGPT and Claude history knows you better than <em>any website does.</em></h1>
+        <p class="lede">Tailor turns it into a private profile, and a Chrome extension rewrites any page for you. Every change cites your words, and code checks every fact.</p>
+      </div>
+
+      <figure class="fact-card" aria-label="Example: one fact from a profile and where it came from">
+        <div class="row">
+          <span class="label">From your profile</span>
+          <span class="chip">owns</span>
+        </div>
+        <p class="fact">Owns a PS5</p>
+        <div class="why">
+          <span class="label">Why · ChatGPT, Aug 3</span>
+          <q>just got a PS5, which TV should I get?</q>
+        </div>
+        <p class="note"><span class="pin" aria-hidden="true"></span><span>On a TV page, PS5 compatibility moves to the top, with this quote one tap away.</span></p>
+      </figure>
+    </div>
+  </div>
+
+  <section id="how">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="label">How it works</p>
+        <h2>From your chats to a page that fits</h2>
+      </div>
+      <ol class="steps">
+        <li>
+          <h3>Import</h3>
+          <p>Drop in the export file from ChatGPT or Claude. Tailor keeps only your own messages, in this browser.</p>
+        </li>
+        <li>
+          <h3>Build a profile</h3>
+          <p>Short facts about you, each with the quote it came from. Keep, edit or delete any of them.</p>
+        </li>
+        <li>
+          <h3>Tailor a page</h3>
+          <p>On any site, the extension edits the page in place: what matters to you comes first, with notes that cite you. The original is one click away.</p>
+        </li>
+        <li>
+          <h3>Share, if you choose</h3>
+          <p>When a site asks what you need, as coframe.com does, Tailor answers with a few facts you approve first.</p>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <section id="principles" style="padding-top: 0">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="label">Built on four rules</p>
+        <h2>The model proposes. Code decides.</h2>
+      </div>
+      <div class="rules">
+        <div class="rule">
+          <svg viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="5" y="12" width="18" height="12" rx="2"/><path d="M9 12V9a5 5 0 0 1 10 0v3"/></svg>
+          <div>
+            <h3>Stays in your browser</h3>
+            <p>Your chat archive and profile live on your device. No account, no server. Only model calls and the sharing you approve leave it.</p>
+          </div>
+        </div>
+        <div class="rule">
+          <svg viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 14.5l5 5L22 8.5"/></svg>
+          <div>
+            <h3>Code checks every fact</h3>
+            <p>Every number, price, spec and link in a rewrite is checked against the original page. Anything the page does not say is removed and counted.</p>
+          </div>
+        </div>
+        <div class="rule">
+          <svg viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 7h16v11H12l-5 4v-4H6z"/></svg>
+          <div>
+            <h3>Every change cites your words</h3>
+            <p>Each change carries the quote it relies on, so you can see why the page changed for you.</p>
+          </div>
+        </div>
+        <div class="rule">
+          <svg viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 4l9 4v6c0 5-4 9-9 10-5-1-9-5-9-10V8z"/></svg>
+          <div>
+            <h3>Sites are untrusted</h3>
+            <p>A site's reply is shown as plain text, labelled as the site's own words, and never treated as instructions.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span class="brand">
+      <img src="logo.png" width="22" height="22" alt="">
+      Tailor
+    </span>
+    <span>Built in one day at The Living Internet Build Day (AGI House × Coframe), Oct 10 2026. Not in the Chrome Web Store yet.</span>
+  </div>
+</footer>
+</body>
+</html>

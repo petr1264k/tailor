@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Fact, PageEdit, PageSegment, TailoredPage } from '@/types'
 import { collectSegments, resolveSegment } from '@/tailor/segments'
-import { mountTailorButton, playTailored, renderFromSite, renderReportSheet, renderTailored, showOriginal, showTailored, type RenderCallbacks, type TailorUi } from './index'
+import { mountTailorButton, playTailored, renderFromSite, renderTailored, showOriginal, showTailored, type RenderCallbacks, type TailorUi } from './index'
 import { appliedLabels, foldTargets, markedElements, noteAnchor } from './inplace'
 import { buildScorecard, countWords, measureSide, scorecardChip, scorecardLine, scorecardRows } from './scorecard'
 
@@ -596,36 +596,9 @@ describe('demo mode: the changes play top to bottom', () => {
     expect(document.querySelector('main')!.innerHTML).toBe(before)
   })
 
-  it('the report sheet lists the numbers and the changes, not the fact check; OK closes it', async () => {
+  it('nothing of ours stays on the page: the bar mounts hidden and no sheet opens on its own', () => {
     setup()
-    const card = buildScorecard(
-      page(edits()),
-      { words: 2870, firstMatchTop: 3240, firstMatchScreens: 3.6, onFirstScreen: 0 },
-      { words: 1140, firstMatchTop: 120, firstMatchScreens: 0.1, onFirstScreen: 2 },
-      3,
-      900,
-    )
-    const closed = renderReportSheet(ui!, {
-      site: 'www.example.com',
-      card,
-      gate: { checked: 14, stripped: [{ blockIndex: 0, blockType: 'section', claim: '144 Hz', reason: 'not_on_page' }] },
-      changes: ['Moved up: Must-Have Picks', 'Folded: Customer praise'],
-    })
-    const sheet = ui!.root.querySelector('.sheet')!
-    expect(sheet.querySelector('.sheet-title')!.textContent).toBe('2 changes for you on this page')
-    expect(sheet.querySelector('.sheet-label')!.textContent).toBe('Tailored for you · www.example.com')
-    const rows = [...sheet.querySelectorAll('.report-rows tr')].map((tr) => [...tr.children].map((td) => td.textContent))
-    expect(rows[0]).toEqual(['First thing marked for you', '3.6 screens down → first screen (3,240 px → 120 px)'])
-    expect(rows[2]).toEqual(['Words on the page', '2,870 → 1,140'])
-    const items = [...sheet.querySelectorAll('.report-changes li')]
-    expect(items.map((li) => li.textContent)).toEqual(['Moved up: Must-Have Picks', 'Folded: Customer praise'])
-    expect(items[0]!.querySelector('b')!.textContent).toBe('Moved up:')
-    expect(sheet.textContent).not.toContain('Fact check')
-    expect(sheet.textContent).not.toContain('claims checked')
-    expect(sheet.textContent).not.toContain('Measured by code')
-    expect(ui!.root.querySelector<HTMLElement>('.bar')!.hidden).toBe(true) // nothing of ours stays on the page
-    ui!.root.querySelector<HTMLButtonElement>('.sheet-actions .primary')!.click()
-    await closed
+    expect(ui!.root.querySelector<HTMLElement>('.bar')!.hidden).toBe(true)
     expect(ui!.root.querySelector('.sheet')).toBeNull()
   })
 

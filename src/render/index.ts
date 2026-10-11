@@ -4,7 +4,7 @@
  * Plain DOM inside a shadow root so the site's CSS never clashes. Nothing of ours stays on the page: the control bar
  * exists for the popup and the tests but is never shown (Petr, Oct 10: no always-on element); Original ↔ Tailored
  * is the popup's. Every change has a "why" chip that opens the exact quote from the user's chats. When the changes
- * have played (demo mode) a report sheet says what changed, with the numbers code measured; OK closes it.
+ * have played (demo mode) nothing opens: the numbers code measured reach the popup through the status.
  * Interactions (expand, collapse, toggle_original, open_why, ignore, dwell) are reported through `onInteraction`.
  *
  * Files: styles.ts (PANEL_CSS, restyle there), blocks.ts (one renderer per Block type + pure helpers), this file
@@ -137,7 +137,7 @@ export function mountTailorButton(callbacks: RenderCallbacks): TailorUi {
   scorePop.hidden = true
   bar.append(button, toggle, share, score, status)
   // Never shown: the page carries only the changes themselves. The popup drives Tailor / Show original / Share and
-  // reads the status through readStatus; the report sheet carries the numbers. The bar stays so those paths work.
+  // reads the status through readStatus, numbers included. The bar stays so those paths work.
   bar.hidden = true
   root.append(style, bar, gatePop, scorePop)
   document.documentElement.append(host)
@@ -531,93 +531,6 @@ export function renderConsentSheet(ui: TailorUi, preview: SharePreview): Promise
 
     ui.root.append(backdrop)
     deny.focus() // the safe default: Enter alone never shares
-  })
-}
-
-// ───────────────────────────── the report sheet (demo mode) ─────────────────────────────
-
-export interface PageReport {
-  /** The site, as shown in the eyebrow ("anker.com"). */
-  site: string
-  /** The scorecard measured by code on this page (null when the page had no in-place edits). */
-  card: Scorecard | null
-  gate: TailoredPage['gate']
-  /** One line per change in effect, e.g. "Moved up: Must-Have Picks" (appliedLabels). */
-  changes: string[]
-}
-
-/** "Moved up: Must-Have Picks" → <b>Moved up:</b> Must-Have Picks */
-function changeItem(line: string): HTMLElement {
-  const li = el('li')
-  const at = line.indexOf(': ')
-  if (at > 0) {
-    li.append(el('b', undefined, line.slice(0, at + 1)), document.createTextNode(line.slice(at + 1)))
-  } else li.textContent = line
-  return li
-}
-
-/**
- * The end-of-run report (§8.5, §9 "Numbers"): what changed for this person and the numbers code measured on this page
- * before and after. The fact check stays in the data (receipts, eval) but is not shown here. One sheet, one OK. Resolves when it closes (OK, Escape, backdrop).
- */
-export function renderReportSheet(ui: TailorUi, report: PageReport): Promise<void> {
-  openSheets.get(ui.root)?.(false)
-  return new Promise<void>((resolve) => {
-    const n = report.changes.length
-    const backdrop = el('div', 'sheet-backdrop')
-    const sheet = el('div', 'sheet')
-    sheet.setAttribute('role', 'dialog')
-    sheet.setAttribute('aria-modal', 'true')
-    const title = el('h2', 'sheet-title', n === 0 ? 'Nothing to change for you on this page' : `${n} ${n === 1 ? 'change' : 'changes'} for you on this page`)
-    title.id = 'tailor-report-title'
-    sheet.setAttribute('aria-labelledby', title.id)
-    sheet.append(el('p', 'sheet-label', `Tailored for you · ${report.site}`), title)
-
-    if (report.card) {
-      const table = el('table', 'report-rows')
-      for (const [label, value] of scorecardRows(report.card)) {
-        const tr = el('tr')
-        tr.append(el('td', undefined, label), el('td', undefined, value))
-        table.append(tr)
-      }
-      sheet.append(table)
-    }
-    if (n > 0) {
-      const list = el('ul', 'report-changes')
-      for (const line of report.changes) list.append(changeItem(line))
-      sheet.append(el('p', 'sheet-label', 'What changed'), list)
-    }
-    const ok = el('button', 'primary', 'OK')
-    ok.type = 'button'
-    const actions = el('div', 'sheet-actions')
-    actions.append(ok)
-    sheet.append(actions)
-    backdrop.append(sheet)
-
-    let done = false
-    const close = (): void => {
-      if (done) return
-      done = true
-      document.removeEventListener('keydown', onKey, true)
-      openSheets.delete(ui.root)
-      backdrop.remove()
-      resolve()
-    }
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key !== 'Escape' && e.key !== 'Enter') return
-      e.preventDefault()
-      e.stopPropagation()
-      close()
-    }
-    ok.addEventListener('click', close)
-    backdrop.addEventListener('click', (e) => {
-      if (e.target === backdrop) close()
-    })
-    document.addEventListener('keydown', onKey, true)
-    openSheets.set(ui.root, close)
-    ui.root.append(backdrop)
-    ok.focus({ preventScroll: true }) // a long report opens at its title, not scrolled down to OK
-    sheet.scrollTop = 0
   })
 }
 

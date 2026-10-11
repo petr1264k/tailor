@@ -6,8 +6,8 @@
  * By default this happens on its own: the page starts tailoring as soon as it has loaded and the edits land in
  * place the moment the run finishes (§3.5). The bar's Tailor button re-runs it; the popup can turn auto off.
  * In demo mode (on by default, §9) the edits PLAY: the page rebuilds itself change by change down to the bottom,
- * with motion, the window going only where a change is, ending back at the top on a report of what changed with
- * the numbers (OK closes it). Show original (popup) stops the run; off = everything at once, no report.
+ * with motion, the window going only where a change is, ending back at the top. Show original (popup) stops the
+ * run; off = everything at once. Nothing opens when a run ends: the numbers code measured go to the popup.
  * Nothing of ours stays on the page: the popup drives everything and reads the status from here.
  *
  * Imports stay light on purpose: '@/tailor/extract', '@/share/hooks' and '@/share/block' pull in no SDK
@@ -22,16 +22,13 @@ import { siteProfileFor } from '@/sites'
 import { toFromSiteBlock } from '@/share/block'
 import { DEMO_FALLBACK_REPLY } from '@/share/fallback'
 import {
-  appliedLabels,
   buildScorecard,
-  displayHost,
   markedElements,
   measureSide,
   mountTailorButton,
   playTailored,
   renderConsentSheet,
   renderFromSite,
-  renderReportSheet,
   renderTailored,
   scorecardLine,
   showOriginal,
@@ -165,8 +162,6 @@ function boot(): void {
       ui.setScorecard(card)
       ui.setGateSummary(page.gate.checked, page.gate.stripped.length, page.gate.stripped)
       mode = 'tailored'
-      // Demo mode ends on the report: what changed, the numbers code measured, the fact check. OK closes it.
-      if (demo) void renderReportSheet(ui, { site: displayHost(url) || location.hostname, card, gate: page.gate, changes: appliedLabels(ui) })
     } catch (err) {
       if (run === tailorRuns) mode = previous === 'loading' ? 'original' : previous
       throw err

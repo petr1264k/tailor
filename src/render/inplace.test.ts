@@ -102,9 +102,21 @@ describe('in-place edits', () => {
     expect(section.hasAttribute('style')).toBe(false) // not display:none, not touched at all
     expect(section.querySelector('img')).not.toBeNull()
     expect(hosts('tailor-fold')).toHaveLength(0) // no stub, nothing of ours left where it stood
-    expect(appliedLabels(ui!)).toEqual(['Moved down: Customer praise · you skip marketing'])
+    expect(appliedLabels(ui!)).toEqual(['Moved down: Customer praise']) // never the reason
     showOriginal(ui!)
     expect(section.nextElementSibling?.id).toBe('specs') // back between its original neighbours
+  })
+
+  it('an outside ad (decided by code) folds away instead of moving down; the undo restores it exactly', () => {
+    setup(`<main><h1>Title here</h1><p id="body">Real content here.</p><div id="ad" class="sponsored"><p>Sponsored: buy the thing today.</p></div><p id="last">Last paragraph here.</p></main>`)
+    renderTailored(page([{ op: 'hide', ids: [byText('Sponsored')], label: 'Sponsored unit', reason: 'an outside ad' }]), [], ui!, target())
+    const ad = document.getElementById('ad') as HTMLElement
+    expect(ad.style.getPropertyValue('display')).toBe('none')
+    expect(ad.nextElementSibling?.id).toBe('last') // folded where it stood, not moved
+    expect(appliedLabels(ui!)).toEqual(['Hidden ad: Sponsored unit'])
+    showOriginal(ui!)
+    expect(ad.hasAttribute('style')).toBe(false)
+    expect(ad.nextElementSibling?.id).toBe('last')
   })
 
   it('foldTargets hides elements one by one when their common ancestor holds other segments', () => {
@@ -507,12 +519,12 @@ describe('demo mode: the changes play top to bottom', () => {
     expect(steps).toEqual([
       '1/4 Rewrote: Maximize revenue from the demand you already have.',
       '2/4 Tagged: Works with your PS5',
-      '3/4 Moved down: Customer praise · you skip marketing',
+      '3/4 Moved down: Customer praise',
       '4/4 Note: Under your $1,500 budget.',
     ])
     expect(appliedLabels(ui!)).toEqual([
       'Rewrote: Maximize revenue from the demand you already have.',
-      'Moved down: Customer praise · you skip marketing',
+      'Moved down: Customer praise',
       'Note: Under your $1,500 budget.',
       'Tagged: Works with your PS5',
     ])

@@ -2,7 +2,7 @@
  * Profile page (options page, opens in a tab). Owner: Petr. Look: coframe.com (src/ui/theme.css).
  *
  * Tabs (CONTEXT.txt §3.1, §3.4, §4 step 6, §9 0:00–0:45):
- *  - Import:   ONE JSON file (ChatGPT conversations.json or the Claude export) → archive stats per source → Extract profile
+ *  - Import:   ONE JSON file (ChatGPT conversations.json or the Claude export) → archive stats per source → extraction starts at once (Stop cancels it); save or load a profile file
  *  - Profile:  facts by category with source quotes; keep / edit / delete / restore; ChatGPT / Claude / both split
  *  - Receipts: what was shared with which site, when (SiteShare)
  * The extraction job (extractJob.ts) belongs to the page, not to the Import tab: it keeps running while another tab is
@@ -168,7 +168,7 @@ function ProfileSwitcher(props: {
 
 /** The extraction job's one-line status, shown on every tab except Import (which has the full card). */
 function ExtractStrip({ job, onView }: { job: ExtractJob; onView?: () => void }) {
-  const cls = job.status === 'done' ? 'ok' : job.status === 'running' ? 'progress' : 'error'
+  const cls = job.status === 'done' ? 'ok' : job.status === 'running' ? 'progress' : job.status === 'stopped' ? 'muted' : 'error'
   return (
     <div className="card row between extract-strip" role="status">
       <span className={cls}>{describeExtractJob(job)}</span>

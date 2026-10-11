@@ -47,6 +47,11 @@ body { font-size: 16px; line-height: 1.55; }
 .drop b { font-weight: 500; }
 .drop.over { border-color: var(--accent); background: var(--accent-soft); }
 .load-head { gap: 6px; padding-top: 16px; border-top: 1px solid var(--line-2); }
+/* Extraction status under the import (Stop / Run again / Dismiss), and the Save row of the Profile file card */
+.extract-status { gap: 8px; padding-top: 16px; border-top: 1px solid var(--line-2); }
+.file-row { align-items: flex-start; flex-wrap: nowrap; }
+.file-row .card-head { gap: 6px; }
+.file-row > button { flex: none; }
 .progress { font: 500 12px/1.4 var(--mono); letter-spacing: 0.04em; color: var(--muted); }
 
 /* ── Profile tab (ProfileTab.tsx): coframe cards like the Import tab, plus the tape-measure confidence in the brand accent ── */

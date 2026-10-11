@@ -16,7 +16,7 @@ import type { Fact, FactCategory, OmittedItem, Profile, SourceSplit } from '@/ty
 import { activeFacts, deleteFact, getOmitted, getProfile, sourceSplit, truncateQuote, updateFact } from '@/profile'
 import { LAYOUT_LABELS, layoutChoiceOf } from '@/learn'
 import { useExtractJob } from './useExtractJob'
-import { attempt, errorText, monthRange, type Attempt } from './helpers'
+import { attempt, downloadJson, errorText, monthRange, type Attempt } from './helpers'
 import {
   CATEGORY_ORDER,
   NO_FILTER,
@@ -67,12 +67,7 @@ function factLabel(fact: Fact): string {
  * Local file only: it holds facts and short quotes, so never open it on stage.
  */
 function downloadProfile(profileId: string, profile: Profile): void {
-  const blob = new Blob([JSON.stringify({ id: profileId, profile }, null, 2)], { type: 'application/json' })
-  const a = document.createElement('a')
-  a.href = URL.createObjectURL(blob)
-  a.download = `${profileId}.json`
-  a.click()
-  setTimeout(() => URL.revokeObjectURL(a.href), 0)
+  downloadJson(`${profileId}.json`, { id: profileId, profile })
 }
 
 /** Height of the page's sticky top bar, so the filter card sticks just below it. */
@@ -268,7 +263,7 @@ function FactsView({ facts, actions, keptOut }: { facts: Fact[]; actions: FactAc
   }, [live])
 
   if (facts.length === 0) {
-    return <div className="card muted">No facts yet. On the Import tab, import an export and run Extract profile, or load a saved profile.</div>
+    return <div className="card muted">No facts yet. Import your chat history on the Import tab (extraction starts by itself), or load a saved profile there.</div>
   }
 
   const shown = (f: Fact) => matchesFilter(f, filter, factLabel(f))

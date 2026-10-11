@@ -10,7 +10,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Fact } from '@/types'
 import { resetDbForTests } from '@/archive'
-import { saveProfile, emptyProfile, getProfile } from '@/profile'
+import { saveProfile, emptyProfile, getProfile, parseProfileFile } from '@/profile'
 import { App } from './App'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -99,6 +99,29 @@ describe('profile page', () => {
     expect(el.textContent).toContain('ChatGPT: saved 1 conversations, 2 of your own messages.')
     const rows = [...el.querySelectorAll('tbody tr')].map((r) => r.textContent)
     expect(rows).toEqual(['ChatGPT12', 'Claude00'])
+    // Extraction starts by itself after the import (here it fails at once: no API key in tests), with no Extract button.
+    expect(el.querySelector('.extract-status')?.textContent).toContain('Profile extraction')
+    expect(el.textContent).not.toContain('Extract into')
+  })
+
+  it('saves the profile to disk as a file the loader reads back', async () => {
+    const fact: Fact = { id: 'f1', category: 'owns', value: 'owns a PS5', confidence: 0.8, source: 'chat', evidence: [] }
+    await saveProfile({ ...emptyProfile(), facts: [fact] }, 'default', { omitted: [{ category: 'finances', count: 2, kinds: 'tax' }] })
+    let blob: Blob | undefined
+    let fileName = ''
+    const create = vi.spyOn(URL, 'createObjectURL').mockImplementation((b) => ((blob = b as Blob), 'blob:profile'))
+    const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+    const anchor = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      fileName = this.download
+    })
+    await mount()
+    await click('Save to disk')
+    expect(fileName).toBe('default.profile.json')
+    expect(el.textContent).toContain('Saved 1 facts of')
+    const saved = JSON.parse(await blob!.text())
+    expect(parseProfileFile(saved).facts.map((f) => f.value)).toEqual(['owns a PS5'])
+    expect(saved.omitted).toEqual([{ category: 'finances', count: 2, kinds: 'tax' }])
+    for (const spy of [create, revoke, anchor]) spy.mockRestore()
   })
 
   it('deletes a fact live, strikes it through, and restores it', async () => {

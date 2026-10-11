@@ -175,6 +175,13 @@ export async function getOmitted(profileId?: string): Promise<OmittedItem[]> {
   return (await db.get('profiles', await resolveId(profileId)))?.omitted ?? []
 }
 
+/** What "Save profile to disk" writes: the §6 Profile, plus `omitted` when it has one. loadProfileFile reads it back. */
+export async function profileFile(profileId?: string): Promise<Profile & { omitted?: OmittedItem[] }> {
+  const profile = await getProfile(profileId)
+  const omitted = await getOmitted(profileId)
+  return omitted.length ? { ...profile, omitted } : profile
+}
+
 /** Facts that are live: not deleted. */
 export function activeFacts(profile: Profile): Fact[] {
   return profile.facts.filter((f) => f.userStatus !== 'deleted')

@@ -23,6 +23,16 @@ export async function attempt<T>(fn: () => T | Promise<T>): Promise<Attempt<T>> 
   }
 }
 
+/** Saves `data` as a pretty-printed JSON file through the browser's download (lands in Downloads). Local only. */
+export function downloadJson(fileName: string, data: unknown): void {
+  const blob = new Blob([JSON.stringify(data, null, 2) + '\n'], { type: 'application/json' })
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = fileName
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(a.href), 0)
+}
+
 // ── Labels ──
 
 export const FACT_CATEGORY_LABELS: Record<FactCategory, string> = {

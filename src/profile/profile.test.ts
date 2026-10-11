@@ -14,6 +14,7 @@ import {
   loadProfileFile,
   parseOmitted,
   parseProfileFile,
+  profileFile,
   saveProfile,
   sourceSplit,
   truncateQuote,
@@ -180,6 +181,16 @@ describe('parseProfileFile / loadProfileFile', () => {
     expect(await getOmitted('mikhail')).toEqual(omitted)
     await loadProfileFile(file(), 'mikhail')
     expect(await getOmitted('mikhail')).toEqual([])
+  })
+
+  it('saves a profile file that loads back into another profile unchanged', async () => {
+    await loadProfileFile({ ...file(), omitted }, 'mikhail')
+    const saved = JSON.parse(JSON.stringify(await profileFile('mikhail')))
+    expect(saved.omitted).toEqual(omitted)
+    const loaded = await loadProfileFile(saved, 'petr')
+    expect(loaded.facts).toEqual((await getProfile('mikhail')).facts)
+    expect(await getOmitted('petr')).toEqual(omitted)
+    expect(await profileFile('nobody')).not.toHaveProperty('omitted')
   })
 })
 

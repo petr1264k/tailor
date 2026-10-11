@@ -1,10 +1,12 @@
 /**
  * Import tab (CONTEXT.txt §3.1; demo §9 0:00–0:20 "N conversations, M messages, two sources").
- * Hero (coframe-style dark band + white stats card) with the archive numbers, then Import and Extract side by side.
+ * Hero (coframe-style dark band + white stats card) with the archive numbers, then Import and Profile file side by side.
  * ONE JSON file, never a zip → detectExportFormat (user overrides if 'unknown') → import.runImport, which is
- * parseExport → applyLimits → saveConversations plus skip counts → per-source stats. Then "Extract profile" starts the
- * page-level extraction job (extractJob.ts → extract.runExtract, §3.2) into the active profile; it keeps running across the tabs.
- * The shortcut past extraction: drop a saved profile file (*.profile.json, a §6 Profile) → profile.loadProfileFile.
+ * parseExport → applyLimits → saveConversations plus skip counts → per-source stats. A successful import starts the
+ * page-level extraction job at once (extractJob.ts → extract.runExtract, §3.2) over the whole archive, into the active
+ * profile; it keeps running across the tabs, and Stop cancels it mid-flight (nothing saved).
+ * Profile file: save the active profile to disk (profile.profileFile), or load one to skip extraction
+ * (*.profile.json → profile.loadProfileFile).
  * Nothing here logs or displays message text: the raw chats never reach the screen (§0).
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -12,9 +14,9 @@ import type { ChatOrigin } from '@/types'
 import type { ArchiveStats } from '@/messages'
 import { DEFAULT_IMPORT_OPTIONS, detectExportFormat, runImport } from '@/import'
 import { clearArchive, getArchiveStats } from '@/archive'
-import { activeFacts, getProfile, loadProfileFile, parseProfileFile } from '@/profile'
-import { attempt, isZipFile, monthRange, originLabel, type Attempt } from './helpers'
-import { describeExtractJob, dismissExtractJob, isOwnRun, startExtract } from './extractJob'
+import { activeFacts, getProfile, loadProfileFile, parseProfileFile, profileFile } from '@/profile'
+import { attempt, downloadJson, isZipFile, monthRange, originLabel, type Attempt } from './helpers'
+import { describeExtractJob, dismissExtractJob, getExtractJob, isOwnRun, startExtract, stopExtract } from './extractJob'
 import { useExtractJob } from './useExtractJob'
 
 const ORIGINS: ChatOrigin[] = ['chatgpt', 'claude']
@@ -31,6 +33,7 @@ export function ImportTab({ profileId, profileName }: { profileId: string; profi
   const [pending, setPending] = useState<Pending | null>(null)
   const [busy, setBusy] = useState(false)
   const [importLine, setImportLine] = useState<{ ok: boolean; text: string } | null>(null)
+  const [startError, setStartError] = useState<string | null>(null)
 
   const refreshStats = useCallback(async () => setStats(await attempt(getArchiveStats)), [])
   useEffect(() => void refreshStats(), [refreshStats])
@@ -87,6 +90,15 @@ export function ImportTab({ profileId, profileName }: { profileId: string; profi
           : ''),
     })
     await refreshStats()
+    if (messages > 0) void extract()
+  }
+
+  /** Extracts the whole archive into this profile. A run already going on this page restarts, so it covers the new file. */
+  async function extract() {
+    setStartError(null)
+    if (isOwnRun(getExtractJob())) await stopExtract()
+    const r = await attempt(() => startExtract(profileId, profileName))
+    if (!r.ok) setStartError(r.error)
   }
 
   async function onClear() {
@@ -125,7 +137,7 @@ export function ImportTab({ profileId, profileName }: { profileId: string; profi
             <h2>Import your chat history</h2>
             <p className="muted">
               ChatGPT: Settings › Data controls › Export data. Claude: Settings › Privacy › Export data. Unzip it and drop only{' '}
-              <code>conversations.json</code>.
+              <code>conversations.json</code>. Your profile is extracted from it right away.
             </p>
           </div>
           <DropZone label="Drop conversations.json here" disabled={busy} onFiles={(f) => void onFiles(f)} />
@@ -143,9 +155,10 @@ export function ImportTab({ profileId, profileName }: { profileId: string; profi
             </div>
           )}
           {importLine && <div className={importLine.ok ? 'ok' : 'error'}>{importLine.text}</div>}
+          <ExtractStatus profileId={profileId} startError={startError} onRunAgain={() => void extract()} />
         </section>
 
-        <ExtractCard profileId={profileId} profileName={profileName} disabled={busy} />
+        <ProfileFileCard profileId={profileId} profileName={profileName} disabled={busy} />
       </div>
     </div>
   )
@@ -254,24 +267,72 @@ function StatsView({ stats }: { stats: Attempt<ArchiveStats> | null }) {
 }
 
 /**
- * Starts the page-level extraction job (extractJob.ts). The job outlives this card: switching to the Profile or
- * Receipts tab keeps it running, and its progress, result, error or interruption shows here and in a status strip
- * on the other tabs.
+ * The extraction that each import starts (extractJob.ts). The job outlives this tab: switching to the Profile tab keeps
+ * it running, with a status strip there. Stop cancels it mid-flight and nothing is saved; Run again restarts it.
  */
-function ExtractCard({ profileId, profileName, disabled }: { profileId: string; profileName: string; disabled: boolean }) {
+function ExtractStatus({ profileId, startError, onRunAgain }: { profileId: string; startError: string | null; onRunAgain: () => void }) {
   const job = useExtractJob()
-  const own = isOwnRun(job)
-  const running = job.status === 'running'
-  const [startError, setStartError] = useState<string | null>(null)
+  const [stopping, setStopping] = useState(false)
+  if (job.status === 'idle') return startError ? <div className="error">{startError}</div> : null
 
-  async function run() {
-    setStartError(null)
-    const r = await attempt(() => startExtract(profileId, profileName))
-    if (!r.ok) setStartError(r.error)
+  async function stop() {
+    setStopping(true)
+    await stopExtract()
+    setStopping(false)
   }
 
+  const line = describeExtractJob(job)
+  const hint = job.status === 'done' ? (job.profileId === profileId ? ' Open the Profile tab to review.' : ' Switch to that profile to review.') : ''
+  return (
+    <div className="stack extract-status">
+      <span className="label">Profile extraction</span>
+      {job.status === 'running' ? (
+        <div className="row between">
+          <span className="progress">{line}</span>
+          {isOwnRun(job) && (
+            <button className="sm danger" disabled={stopping} onClick={() => void stop()}>
+              {stopping ? 'Stopping…' : 'Stop'}
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="row between">
+          <div className={job.status === 'done' ? 'ok' : job.status === 'stopped' ? 'muted' : 'error'}>
+            {line}
+            {hint}
+          </div>
+          <span className="row">
+            {job.status !== 'done' && (
+              <button className="sm" onClick={onRunAgain}>
+                Run again
+              </button>
+            )}
+            <button className="sm" onClick={dismissExtractJob}>
+              Dismiss
+            </button>
+          </span>
+        </div>
+      )}
+      {startError && <div className="error">{startError}</div>}
+    </div>
+  )
+}
+
+/** Save the active profile to disk, or load a saved one: the shortcut past extraction (e.g. claude.profile.json). */
+function ProfileFileCard({ profileId, profileName, disabled }: { profileId: string; profileName: string; disabled: boolean }) {
+  const job = useExtractJob()
+  const running = job.status === 'running'
+  const [saveLine, setSaveLine] = useState<{ ok: boolean; text: string } | null>(null)
   const [loadLine, setLoadLine] = useState<{ ok: boolean; text: string } | null>(null)
   const [loading, setLoading] = useState(false)
+  const fileName = `${profileId}.profile.json`
+
+  async function onSave() {
+    const r = await attempt(() => profileFile(profileId))
+    if (!r.ok) return setSaveLine({ ok: false, text: `Save failed: ${r.error}` })
+    downloadJson(fileName, r.value)
+    setSaveLine({ ok: true, text: `Saved ${activeFacts(r.value).length} facts of “${profileName}” as ${fileName} in your Downloads folder.` })
+  }
 
   /** A saved profile file replaces this profile's facts: the shortcut past extraction (e.g. claude.profile.json). */
   async function onProfileFile(files: FileList | null) {
@@ -295,37 +356,25 @@ function ExtractCard({ profileId, profileName, disabled }: { profileId: string; 
     )
   }
 
-  const line = describeExtractJob(job)
-  const hint = job.status === 'done' ? (job.profileId === profileId ? ' Open the Profile tab to review.' : ' Switch to that profile to review.') : ''
   return (
     <section className="card stack">
       <div className="card-head">
-        <span className="tag">Extract</span>
-        <h2>Extract profile</h2>
-        <p className="muted">
-          Haiku proposes facts with a quote from your own messages; code checks every quote; Sonnet merges and scores them. Keep, edit or
-          delete any fact on the Profile tab. The run keeps going while you look at the other tabs and the facts are saved to the profile
-          the moment it finishes; closing or reloading this page stops it.
-        </p>
+        <span className="tag">Profile file</span>
+        <h2>Save or load a profile</h2>
+        <p className="muted">A profile file holds the facts with their short quotes and what was kept out, never whole chats.</p>
       </div>
-      <div className="row">
-        <button className={running ? 'primary' : 'primary arrow'} disabled={running || disabled} onClick={() => void run()}>
-          {own ? 'Extracting…' : running ? 'Running in another tab…' : `Extract into “${profileName}”`}
-        </button>
-        {running && <span className="progress">{line}</span>}
-      </div>
-      {startError && <div className="error">{startError}</div>}
-      {job.status !== 'idle' && !running && (
-        <div className="row between">
-          <div className={job.status === 'done' ? 'ok' : 'error'}>
-            {line}
-            {hint}
-          </div>
-          <button className="sm" onClick={dismissExtractJob}>
-            Dismiss
-          </button>
+      <div className="row between file-row">
+        <div className="card-head">
+          <h3>Save profile to disk</h3>
+          <p className="muted small">
+            Downloads “{profileName}” as <code>{fileName}</code>. Load it here later, or in another browser.
+          </p>
         </div>
-      )}
+        <button className="primary" disabled={disabled} onClick={() => void onSave()}>
+          Save to disk
+        </button>
+      </div>
+      {saveLine && <div className={saveLine.ok ? 'ok' : 'error'}>{saveLine.text}</div>}
       <div className="card-head load-head">
         <h3>Load a saved profile</h3>
         <p className="muted small">

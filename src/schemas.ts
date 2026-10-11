@@ -62,12 +62,27 @@ export type CandidateFact = z.infer<typeof CandidateFactSchema>
 export const MergedFactSchema = z.object({
   category: FactCategorySchema,
   value: z.string().min(3).max(200),
-  /** Indices into the candidate list given in the prompt. Code rebuilds evidence from these. */
-  candidateIndices: z.array(z.number().int().nonnegative()).min(1),
+  /**
+   * Indices into the candidate list given in the prompt. Code rebuilds evidence from these.
+   * May be empty: mergeCandidates drops a fact that cites nothing, instead of failing the whole merge.
+   */
+  candidateIndices: z.array(z.number().int().nonnegative()),
   /** 0..1, the model's score for frequency + recency. Code may rescale. */
   confidence: z.number().min(0).max(1),
 })
 export const MergedFactsOutputSchema = z.object({ facts: z.array(MergedFactSchema).max(120) })
+
+/** Recurring kinds of question (§3.2): each pattern cites quotes from the person's messages; code verifies them. */
+export const QuestionPatternsOutputSchema = z.object({
+  questions: z
+    .array(
+      z.object({
+        value: z.string().min(3).max(200),
+        quotes: z.array(z.object({ messageId: z.string(), quote: z.string().min(3).max(300) })).max(8),
+      }),
+    )
+    .max(12),
+})
 export type MergedFact = z.infer<typeof MergedFactSchema>
 
 /** Relevance selection (§3.5): which profile facts matter for this page. */

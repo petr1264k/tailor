@@ -17,6 +17,7 @@ import { detectFormat, parseChatGpt, parseClaude, unwrapExport, type ParseResult
 
 export { estimateTokens, countMessages } from './limits'
 export { toIsoDate, type ParseResult } from './parse'
+export { detectClaudeExtra, parseClaudeExtra, type ClaudeExtraKind } from './extras'
 
 export const DEFAULT_IMPORT_OPTIONS: Required<ImportOptions> = DEFAULT_LIMITS
 

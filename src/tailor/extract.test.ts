@@ -41,6 +41,23 @@ function parse(html: string): Document {
 }
 
 describe('extractPageContent', () => {
+  it('marks outside ads (an ad slot, a sponsored unit) in adIds and leaves the site\'s own sections out', () => {
+    const doc = parse(`<!doctype html><html><body><main>
+      <section id="own"><h2>News</h2><p>Our new store opens in Austin this fall, come and visit us there.</p></section>
+      <div id="slot" class="ad-slot"><p>Advertisement</p><iframe src="https://securepubads.g.doubleclick.net/gampad/ads"></iframe></div>
+      <section id="sp"><span>Sponsored</span><p>Try Acme VPN free for 30 days and browse without limits anywhere.</p></section>
+    </main></body></html>`)
+    const content = extractPageContent(doc, URL_)
+    const adRegions = (content.regions ?? []).filter((r) => content.adIds?.includes(r.id))
+    expect(adRegions.map((r) => r.title)).toEqual(['Advertisement', 'Try Acme VPN free for 30 days and browse without limits anywhere.'])
+    const own = (content.regions ?? []).find((r) => r.title === 'News')!
+    expect(content.adIds).not.toContain(own.id)
+    for (const s of own.segmentIds) expect(content.adIds).not.toContain(s)
+    const sponsoredSeg = content.segments.find((s) => s.text.startsWith('Try Acme'))!
+    expect(content.adIds).toContain(sponsoredSeg.id)
+    expect(extractPageContent(parse(TV_PAGE), URL_).adIds).toBeUndefined()
+  })
+
   beforeEach(() => {
     vi.mocked(readAgentHooks).mockReset().mockReturnValue(null)
   })

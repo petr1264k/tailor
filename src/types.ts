@@ -322,6 +322,12 @@ export interface PageContent {
   site?: { host: string; name: string; kind: SiteKind }
   /** The page map: top-level regions with their role, title and items (src/sites/regions.ts). Absent when none were found. */
   regions?: PageRegion[]
+  /**
+   * Ids (s#, r#, i#) that are OUTSIDE ADS: ad-network slots, sponsored units, paid placements (src/sites/ads.ts, code only).
+   * The only thing that ever folds away; everything else a hide names moves down instead (src/render/inplace.ts).
+   * Absent when the page has none.
+   */
+  adIds?: string[]
   /** Present only on pages that offer agent hooks (coframe.com). */
   agentHooks?: CoframeAgentHooks
   /** Language detected on the page (BCP 47), used to hold language constant in evals. */

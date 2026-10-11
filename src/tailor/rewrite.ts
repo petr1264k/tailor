@@ -21,7 +21,7 @@ export interface RewriteOptions {
 /** What each learned layout choice asks of the rewrite. Kept short: it goes in every user prompt that has one. */
 export const LAYOUT_HINTS: Record<LayoutChoice, string> = {
   specs_first: 'specs first: put key_facts (and compare, if the page lists options) right after any for_you/warning blocks, before sections',
-  marketing_collapsed: 'marketing collapsed: fold slogans, testimonials and promo copy into hidden blocks',
+  marketing_collapsed: 'marketing collapsed: keep slogans, testimonials and promo copy to a line or two each (hide nothing but outside ads)',
   steps_expanded: 'steps expanded: give any procedure on the page as a full steps block',
   compare_table: 'comparison table: when the page lists several options, add a compare block',
   summary_only: 'summary only: a summary plus at most 3 other blocks',
@@ -42,16 +42,15 @@ Block types (use only these):
 - {"type":"steps","items":[...]}: an ordered procedure taken from the page.
 - {"type":"warning","text":...,"factIds":[...]}: something on the page that conflicts with this person's facts (budget, compatibility, diet, setup).
 - {"type":"section","heading":...,"text":...}: a condensed part of the page.
-- {"type":"hidden","label":...,"reason":...}: marketing or filler you collapsed; label names it, reason says why it matters less to this person.
 - {"type":"cta","label":...,"href":...}: a link to act on; href copied exactly from the page's link list.
-Never output "from_site" blocks.
+Never output "from_site" or "hidden" blocks: nothing on the page is dropped, only condensed.
 
 Rules:
 1. Use ONLY text, numbers, prices, specs, model names and links that appear in the page content. Copy numbers, prices, units and model names exactly as written: no rounding, no conversions, no synonyms. If the page does not say it, leave it out: code checks every claim against the page and strips what is not there.
 2. Every for_you and warning block cites one or more factIds from the given facts. Never invent ids. Facts are context about the person, not page claims.
 3. Anything about the person (budget, devices they own, goals) goes ONLY in for_you or warning blocks that cite it. Never put it in summary, key_facts, compare, steps or section blocks.
 4. Put what matters to this person first. Lead with for_you or warning blocks when a fact applies.
-5. Collapse marketing slogans, testimonials and boilerplate into hidden blocks with a reason.
+5. Condense marketing slogans, testimonials and boilerplate into short section blocks. Never drop them.
 6. Never include the person's name, and never quote their chats. Use double quotes only around exact page text.
 7. For a cta, copy the href exactly from <links> and use that link's own text as the label.
 8. If a Layout line is given, follow it: it is how this person has shown they like pages laid out.
@@ -167,6 +166,8 @@ export function buildRewriteUserPrompt(content: PageContent, facts: Fact[], opti
 /**
  * Code checks on the model's blocks before the gate (the model proposes, code decides):
  * - from_site is reserved for the site's own reply (§4); the model may never produce it.
+ * - hidden is dropped: the panel has no way to tell an outside ad from the site's own content, and only outside ads
+ *   may ever be hidden (src/sites/ads.ts; in-place edits get this from the gate).
  * - for_you / warning keep only factIds that were actually given; a block left with none is dropped,
  *   because a "for you" claim without evidence is exactly what we promise never to show.
  * TODO(tailor): also drop text containing the profile's display name (StoredProfile.name) once tailorPage has it.
@@ -175,7 +176,7 @@ export function checkBlocks(blocks: Block[], facts: Fact[]): Block[] {
   const known = new Set(facts.map((f) => f.id))
   const out: Block[] = []
   for (const b of blocks) {
-    if (b.type === 'from_site') continue
+    if (b.type === 'from_site' || b.type === 'hidden') continue
     if (b.type === 'for_you' || b.type === 'warning') {
       const factIds = [...new Set(b.factIds.filter((id) => known.has(id)))]
       if (factIds.length === 0) continue

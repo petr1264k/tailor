@@ -4,8 +4,9 @@
  * completeJson, then checked by code here (fact ids), then by the edit gate (§3.6, src/gate/edits) in tailorPage.
  *
  * Why edits and not a summary: the site keeps its own look. Headings and paragraphs are rewritten where they stand,
- * fluff collapses where it stood, and personal notes slot in next to what they are about. Original ↔ Tailored is an
- * exact undo.
+ * personal notes slot in next to what they are about, and what matters less moves below what matters: it is never
+ * hidden. Only an outside ad folds away, and code decides that from the DOM (src/sites/ads.ts), not the model.
+ * Original ↔ Tailored is an exact undo.
  *
  * Page text is untrusted: it goes into the user turn inside <page> as data; the system prompt says never to follow it.
  */
@@ -28,7 +29,7 @@ export const EDIT_SYSTEM = `You edit one web page, in place, for one person, usi
 
 Edit types (use only these):
 - {"op":"rewrite","id":"s12","text":"...","factIds":["f3"]}: replace that element's text. Same meaning, written for this person: their language, their reading level, their vocabulary, shorter where the original rambles, concrete where it is vague. factIds (optional) name the facts that explain the change (reading level, expertise, language, interests).
-- {"op":"hide","ids":["s30","s31","s32"],"label":"...","reason":"..."}: collapse a run of elements that matter less to this person (slogans, testimonials, press logos, repeated promo copy, sections about things they do not need). label names the part (e.g. "Customer testimonials"), reason says why it matters less to this person.
+- {"op":"hide","ids":["s30","s31","s32"],"label":"...","reason":"..."}: a run of elements, a whole region (r#) or a whole card (i#) that matters less to this person (slogans, testimonials, press logos, a membership pitch, a partner promo, categories they have no device for). Nothing is removed: code moves the part below what matters, where it stays readable. Only an outside ad (an ad-network slot, a sponsored unit, a paid placement for another company; the user turn lists their ids under "Outside ads") folds away. label names the part in a few words (e.g. "Customer testimonials"); reason is one short phrase for the log, never shown to the person.
 - {"op":"note","after":"s3","text":"...","factIds":["f1"]}: a 1-2 sentence note for this person, inserted right after element s3, saying why something on the page matters to them. Cites the facts it relies on.
 - {"op":"warn","after":"s3","text":"...","factIds":["f2"]}: like note, for something on the page that conflicts with this person's facts (budget, compatibility, diet, setup, requirements).
 - {"op":"promote","id":"r7","reason":"...","factIds":["f1"]}: move a whole region to the top of the page content (a product shelf, a collection, a guide), or move a card (an item id, e.g. "i12") to the front of its list. reason is one short sentence on why this comes first for this person, citing facts. The page shows "Moved up for you" with your reason.
@@ -38,9 +39,9 @@ Rules:
 1. Rewrites use ONLY text, numbers, prices, specs and model names that appear in the page. Copy numbers, prices, units and model names exactly as written: no rounding, no conversions, no synonyms. If the page does not say it, leave it out: code checks every claim against the page and strips what is not there.
 2. Anything about the person (their budget, devices, stack, goals) goes ONLY in note and warn edits that cite factIds. Never inside a rewrite. Never invent fact ids.
 3. Rewrite the elements this person will actually read: the headline, the key paragraphs, list items that carry specs or steps. Leave untouched: labels, menu items, buttons, legal text, prices, and anything already right for them. Do not rewrite an element to say the same thing.
-4. Hide whole runs of consecutive ids, not single words. Region ids (r#) and item ids (i#) may be hidden whole: use them for parts of the page that are not for this person (a membership pitch, a partner promo, reviews, categories they have no device for). Never hide prices, specs, steps, warnings, requirements, the product shelf, or an element you anchor a note to.
+4. Hide whole runs of consecutive ids, whole regions (r#) or whole cards (i#), not single words. Always include the ids listed under "Outside ads" when there are any. Never hide prices, specs, steps, warnings, requirements, the product shelf, or an element you anchor a note to.
 5. Put the most useful note or warn near the top of the page (after the headline, the first region, or the item it is about). At most 4 notes and 2 warns. note/warn "after" may be a region or item id.
-5a. On a page with a map, personalize the STRUCTURE first: promote the region whose items fit this person's devices, needs and budget (at most 2 regions), promote the 1-3 cards that fit them best to the front of their list, badge up to 6 cards with the page's own spec or price that makes them fit (or not), and hide the regions that are not for them. A card that conflicts with a fact (over budget, wrong connector, wrong device) gets a warn after it, not a badge. Items and regions you promote, badge or warn about must exist in the map.
+5a. On a page with a map, personalize the STRUCTURE first: promote the region whose items fit this person's devices, needs and budget (at most 2 regions), promote the 1-3 cards that fit them best to the front of their list, badge up to 6 cards with the page's own spec or price that makes them fit (or not), and hide the regions that are not for them (code moves them to the bottom). A card that conflicts with a fact (over budget, wrong connector, wrong device) gets a warn after it, not a badge. Items and regions you promote, badge or warn about must exist in the map.
 6. Never include the person's name, and never quote their chats. Use double quotes only around exact page text.
 7. If a Layout line is given, follow it: it is how this person has shown they like pages laid out.
 8. Write every rewrite, note and warn in the requested language at the requested reading level. If the requested language differs from the page's, the rewrites translate the elements you touch.
@@ -95,6 +96,9 @@ export function buildEditUserPrompt(content: PageContent, facts: Fact[], options
     : '(none: only tighten what rambles; no notes)'
   const jsonLd = content.jsonLd.length ? JSON.stringify(content.jsonLd).slice(0, MAX_PROMPT_JSON_LD_CHARS) : ''
   const layout = (options.layout ?? []).map((c) => LAYOUT_HINTS[c]).filter(Boolean)
+  // Code found these outside ads in the DOM (src/sites/ads.ts). They are the only thing that folds away; the model just names them.
+  const adIds = content.adIds ?? []
+  const adLines = adIds.length ? [`Outside ads on this page (code-detected; include them in a hide, they fold away): ${adIds.join(', ')}`, ''] : []
   const lines = promptSegments(content.segments).map((s) => `${s.id} [${s.tag}] ${oneLine(s.text)}`)
   const regions = content.regions ?? []
   const site = content.site
@@ -114,6 +118,7 @@ export function buildEditUserPrompt(content: PageContent, facts: Fact[], options
     'Facts about this person (id | category | value):',
     factLines,
     '',
+    ...adLines,
     '<page>',
     `Title: ${oneLine(content.title)}`,
     `URL: ${promptUrl(content.url)}`,

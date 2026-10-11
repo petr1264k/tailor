@@ -8,7 +8,7 @@
 import { Readability } from '@mozilla/readability'
 import type { PageContent, PageLink } from '@/types'
 import { readAgentHooks } from '@/share/hooks'
-import { collectRegions, siteProfileFor } from '@/sites'
+import { collectRegions, outsideAdIds, siteProfileFor } from '@/sites'
 import { collectSegments } from './segments'
 
 export { collectSegments, resolveSegment, segmentText } from './segments'
@@ -153,6 +153,14 @@ export function extractPage(doc: Document, url: string): ExtractedPage {
   if (agentHooks) content.agentHooks = agentHooks
   if (lang) content.lang = lang
   if (regionMap.regions.length) content.regions = regionMap.regions
+  // Outside ads, decided by code from the live DOM: the only thing that ever folds away (src/sites/ads.ts).
+  let adIds: string[] = []
+  try {
+    adIds = outsideAdIds(doc, segmented.elements, regionMap.elements, regionMap.regions)
+  } catch {
+    adIds = []
+  }
+  if (adIds.length) content.adIds = adIds
   if (profile.host !== '*') content.site = { host: profile.host, name: profile.name, kind: profile.kind }
   return { content, elements: segmented.elements, regionElements: regionMap.elements }
 }

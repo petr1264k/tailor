@@ -128,7 +128,13 @@ interface Pin {
   anchorOf: () => Element | null
   /** A few px of hand-placed looseness, from the note's text. */
   jitter: number
+  /** Ancestors that clip the anchor (overflow other than visible), cached per anchor element. */
+  clipFor?: Element | null
+  clips?: Element[]
 }
+
+/** A note this short is one line on a card: it gets the compact paper (styles.ts .is-short / .is-compact). */
+export const SHORT_NOTE_CHARS = 120
 
 /** A placed note's box in viewport coordinates, so later notes do not land on it. */
 interface Box {
@@ -230,10 +236,10 @@ const JITTERS = [0, 9, 3, 13, 6, 1, 11, 4]
  * lean across re-renders and two notes next to each other almost never lean alike. The jitter lands on the host
  * (data-jitter) for `placePin`.
  */
-function stickyNote(host: HTMLElement, paper: HTMLElement, seed: string): HTMLElement {
+function stickyNote(host: HTMLElement, paper: HTMLElement, seed: string, compact = false): HTMLElement {
   let h = 0
   for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0
-  const sticky = el('div', 'sticky')
+  const sticky = el('div', compact ? 'sticky is-compact' : 'sticky')
   sticky.style.setProperty('--tilt', TILTS[h % TILTS.length]!)
   host.dataset['jitter'] = String(JITTERS[(h >>> 4) % JITTERS.length])
   const tape = el('span', 'tape')
@@ -248,9 +254,12 @@ function noteHost(edit: Extract<PageEdit, { op: 'note' | 'warn' | 'promote' }>, 
   const blockType = BLOCK_TYPE_OF[edit.op]
   host.dataset['blockType'] = blockType
   host.dataset['op'] = edit.op
+  const text = edit.op === 'promote' ? edit.reason : edit.text
+  const short = text.length <= SHORT_NOTE_CHARS
   const note = el('div', edit.op === 'warn' ? 'note is-warn' : edit.op === 'promote' ? 'note is-move' : 'note')
+  if (short) note.classList.add('is-short')
   if (edit.op === 'warn') note.setAttribute('role', 'note')
-  note.append(el('div', 'kicker', KICKER[edit.op]), el('p', 'text', edit.op === 'promote' ? edit.reason : edit.text))
+  note.append(el('div', 'kicker', KICKER[edit.op]), el('p', 'text', text))
   const facts = liveFacts(edit.factIds, state.facts)
   const row = whyRow(facts, blockType, report)
   if (row) note.append(row)
@@ -262,7 +271,7 @@ function noteHost(edit: Extract<PageEdit, { op: 'note' | 'warn' | 'promote' }>, 
     report({ kind: 'ignore', blockType, factIds: edit.factIds })
   })
   note.append(x)
-  root.append(stickyNote(host, note, edit.op === 'promote' ? edit.reason : edit.text))
+  root.append(stickyNote(host, note, text, short))
   return host
 }
 
@@ -314,6 +323,36 @@ function placementFor(anchor: Element): Element {
 const EDGE = 8 // keep notes this far inside the viewport
 const INSET = 14 // how far inside the anchor's corner a note sits
 
+/** Ancestors that clip their content (overflow other than visible): a card scrolled out of a carousel sits behind one. */
+function clippingAncestors(el: Element): Element[] {
+  const out: Element[] = []
+  if (typeof getComputedStyle !== 'function') return out
+  for (let n = el.parentElement; n && n !== document.body && n !== document.documentElement; n = n.parentElement) {
+    const cs = getComputedStyle(n)
+    if ((cs.overflowX && cs.overflowX !== 'visible') || (cs.overflowY && cs.overflowY !== 'visible')) out.push(n)
+  }
+  return out
+}
+
+/** True when less than half of the anchor's box shows through its clipping ancestors (the rest is cut off). */
+function clippedAway(r: DOMRect, clips: Element[]): boolean {
+  const area = r.width * r.height
+  if (area <= 0 || clips.length === 0) return false
+  let left = r.left
+  let top = r.top
+  let right = r.right
+  let bottom = r.bottom
+  for (const c of clips) {
+    const b = c.getBoundingClientRect()
+    if (b.width === 0 && b.height === 0) continue // not laid out (jsdom, display: contents): no opinion
+    left = Math.max(left, b.left)
+    top = Math.max(top, b.top)
+    right = Math.min(right, b.right)
+    bottom = Math.min(bottom, b.bottom)
+  }
+  return Math.max(0, right - left) * Math.max(0, bottom - top) < area * 0.5
+}
+
 /**
  * Puts a sticky note on its anchor. Tall anchors (images, cards, sections) get the note inside a corner, top-right
  * first. Short ones (a line or two of text) get it stuck on the right end of the line, centred on it, two thirds
@@ -329,6 +368,14 @@ function placePin(pin: Pin, taken: Box[]): void {
   const sticky = host.shadowRoot?.querySelector<HTMLElement>('.sticky')
   if (!anchor || !r || !sticky || (r.width === 0 && r.height === 0)) {
     host.style.visibility = 'hidden' // the anchor is not rendered right now: no note floating at 0,0
+    return
+  }
+  if (pin.clipFor !== anchor) {
+    pin.clipFor = anchor
+    pin.clips = clippingAncestors(anchor)
+  }
+  if (clippedAway(r, pin.clips ?? [])) {
+    host.style.visibility = 'hidden' // the card is scrolled out of its carousel: the note goes with it
     return
   }
   host.style.visibility = ''

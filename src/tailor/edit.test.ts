@@ -57,22 +57,22 @@ describe('buildEditUserPrompt', () => {
 })
 
 describe('checkEdits', () => {
-  it('drops notes without a known fact, filters fact ids, and caps notes at 4 and warns at 2', () => {
+  it('drops notes without a known fact, filters fact ids, and caps notes at 14 and warns at 4', () => {
     const note = (i: number): PageEdit => ({ op: 'note', after: 's1', text: `n${i}`, factIds: ['f-ps5', 'nope'] })
     const warn = (i: number): PageEdit => ({ op: 'warn', after: 's1', text: `w${i}`, factIds: ['f-ps5'] })
     const out = checkEdits(
       [
         { op: 'note', after: 's1', text: 'unbacked', factIds: ['nope'] },
-        ...[1, 2, 3, 4, 5].map(note),
-        ...[1, 2, 3].map(warn),
+        ...Array.from({ length: 16 }, (_, i) => note(i + 1)),
+        ...[1, 2, 3, 4, 5, 6].map(warn),
         { op: 'rewrite', id: 's2', text: 'Short.', factIds: ['nope', 'f-simple'] },
         { op: 'rewrite', id: 's1', text: 'Plain.', factIds: ['nope'] },
         { op: 'hide', ids: ['s3'], label: 'Praise', reason: 'filler' },
       ],
       facts,
     )
-    expect(out.filter((e) => e.op === 'note')).toHaveLength(4)
-    expect(out.filter((e) => e.op === 'warn')).toHaveLength(2)
+    expect(out.filter((e) => e.op === 'note')).toHaveLength(14)
+    expect(out.filter((e) => e.op === 'warn')).toHaveLength(4)
     expect(out.find((e) => e.op === 'note')).toEqual({ op: 'note', after: 's1', text: 'n1', factIds: ['f-ps5'] })
     expect(out.find((e) => e.op === 'rewrite' && e.id === 's2')).toEqual({ op: 'rewrite', id: 's2', text: 'Short.', factIds: ['f-simple'] })
     expect(out.find((e) => e.op === 'rewrite' && e.id === 's1')).toEqual({ op: 'rewrite', id: 's1', text: 'Plain.' })

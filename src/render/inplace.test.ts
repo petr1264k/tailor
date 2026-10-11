@@ -148,6 +148,8 @@ describe('in-place edits', () => {
     expect(document.getElementById('intro')!.nextElementSibling?.id).toBe('list') // the page's own order is untouched
     expect(inShadow(notes[0]!, '.kicker').textContent).toBe('For you')
     expect(inShadow(notes[0]!, '.text').textContent).toBe('Works with your PS5 at 120Hz.')
+    expect(inShadow(notes[0]!, '.note').classList.contains('is-short')).toBe(true) // one line: compact paper
+    expect(inShadow(notes[0]!, '.sticky').classList.contains('is-compact')).toBe(true)
     expect(inShadow(notes[1]!, '.note').classList.contains('is-warn')).toBe(true)
     expect(inShadow(notes[1]!, '.kicker').textContent).toBe('Heads up')
     expect(inShadow(notes[0]!, 'tailor-why')).toBeTruthy()

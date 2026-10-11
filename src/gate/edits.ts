@@ -38,6 +38,19 @@ export const MAX_REWRITE_GROWTH = 2
 export const MAX_REWRITE_EXTRA_CHARS = 120
 /** A badge is a tag, not a paragraph. */
 export const MAX_BADGE_CHARS = 90
+/** A note is one line stuck on a card. Longer ones keep their first sentence; a long first sentence is cut at a word. */
+export const MAX_NOTE_CHARS = 120
+
+/** Code decides how long a note gets to be: the model is asked for one line, this makes sure of it. */
+export function shortNote(text: string, max = MAX_NOTE_CHARS): string {
+  const t = text.replace(/\s+/g, ' ').trim()
+  if (t.length <= max) return t
+  const first = t.split(/(?<=[.!?])\s+/)[0] ?? t
+  if (first.length <= max) return first
+  const cut = first.slice(0, max - 1)
+  const at = cut.lastIndexOf(' ')
+  return `${(at > max / 2 ? cut.slice(0, at) : cut).replace(/[\s,;:]+$/, '')}…`
+}
 
 /** How each edit op is reported in GateResult / Interaction (the frozen types speak in block types). */
 export const EDIT_BLOCK_TYPE: Record<PageEdit['op'], BlockType> = {
@@ -169,6 +182,9 @@ export function runEditGate(input: EditGateInput): EditGateOutput {
           if (!first) return invalid(blockIndex, edit, `unknown anchor ${edit.after}`)
           edit = { ...edit, after: first.id }
         }
+        const text = shortNote(edit.text)
+        if (!text) return invalid(blockIndex, edit, `empty ${edit.op} on ${edit.after}`)
+        edit = { ...edit, text }
         break
       }
       case 'promote': {

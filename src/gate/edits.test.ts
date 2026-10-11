@@ -46,6 +46,20 @@ describe('runEditGate', () => {
     expect(out.gate.stripped.map((s) => s.blockType)).toEqual(['section', 'section', 'hidden'])
   })
 
+  it('keeps a note to one line: a long note keeps its first sentence, a long sentence is cut at a word', () => {
+    const long = 'Works with your PS5. ' + 'This paragraph goes on about the panel and the ports for far too long to be a sticky note. '.repeat(2)
+    expect(gate([{ op: 'note', after: 's1', text: long, factIds: ['f-ps5'] }]).edits).toEqual([
+      { op: 'note', after: 's1', text: 'Works with your PS5.', factIds: ['f-ps5'] },
+    ])
+    const sentence = 'Works with your PS5 and ' + 'word '.repeat(40) + 'end'
+    const out = gate([{ op: 'warn', after: 's1', text: sentence, factIds: ['f-ps5'] }])
+    expect(out.edits).toHaveLength(1)
+    const text = (out.edits[0] as { text: string }).text
+    expect(text.length).toBeLessThanOrEqual(120)
+    expect(text.endsWith('…')).toBe(true)
+    expect(text).toMatch(/word…$/)
+  })
+
   it('moves a note with an unknown anchor to the first segment instead of losing it', () => {
     const out = gate([{ op: 'note', after: 's42', text: 'Works with your PS5.', factIds: ['f-ps5'] }])
     expect(out.edits).toEqual([{ op: 'note', after: 's1', text: 'Works with your PS5.', factIds: ['f-ps5'] }])

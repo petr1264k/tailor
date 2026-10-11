@@ -15,7 +15,7 @@ import { containsToken, normalizeForMatch, normalizeHref } from './normalize'
 export type { Claim, LocatedClaim } from './claims'
 export { extractClaims, findClaims } from './claims'
 export { normalizeForMatch, normalizeHref } from './normalize'
-export { runEditGate, EDIT_BLOCK_TYPE, MAX_REWRITE_GROWTH, MAX_REWRITE_EXTRA_CHARS } from './edits'
+export { runEditGate, shortNote, EDIT_BLOCK_TYPE, MAX_REWRITE_GROWTH, MAX_REWRITE_EXTRA_CHARS, MAX_NOTE_CHARS } from './edits'
 export type { EditGateInput, EditGateOutput } from './edits'
 
 export interface GateInput {

@@ -23,6 +23,8 @@ export default defineManifest({
   content_scripts: [
     {
       matches: ['http://*/*', 'https://*/*', 'file:///*'],
+      // Our own landing page: the extension stays off it (no button, no auto-tailor, no edits).
+      exclude_matches: ['https://ai-tailor.pages.dev/*'],
       js: ['src/content/index.ts'],
       run_at: 'document_idle',
     },

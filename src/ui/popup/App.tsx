@@ -13,6 +13,8 @@ import { Brand } from '../Brand'
 import { describeStatus } from './status'
 
 const NOT_RUNNING = 'Tailor is not on this tab. Switch to a normal web page (Chrome blocks every extension on chrome:// and the Web Store), or reload a page that was open before the extension loaded.'
+/** Hidden for the demo: "Share with this site" (§3.9, §4). Set true to bring the button back. */
+const SHOW_SHARE = false
 const POLL_MS = 1000
 const POLL_MAX = 90
 
@@ -122,24 +124,32 @@ export function App() {
         <button className="primary big arrow" disabled={busy} onClick={() => void command({ type: 'content/tailor' })}>
           Tailor this page
         </button>
-        <div className="pair">
+        {SHOW_SHARE ? (
+          <div className="pair">
+            <button disabled={busy} onClick={() => void command({ type: 'content/original' })}>
+              Show original
+            </button>
+            <button
+              disabled={busy}
+              title={status && !status.hasAgentHooks ? 'This page does not ask agents what you need' : undefined}
+              onClick={() => void command({ type: 'content/share' })}
+            >
+              Share with this site
+            </button>
+          </div>
+        ) : (
           <button disabled={busy} onClick={() => void command({ type: 'content/original' })}>
             Show original
           </button>
-          <button
-            disabled={busy}
-            title={status && !status.hasAgentHooks ? 'This page does not ask agents what you need' : undefined}
-            onClick={() => void command({ type: 'content/share' })}
-          >
-            Share with this site
-          </button>
-        </div>
+        )}
 
         {status && (
           <div className="panel">
             <span className="label">Status</span>
             <div className="status-line">{describeStatus(status)}</div>
-            {status.hasAgentHooks && <div className="hint">This site asks agents what you need. Sharing shows you the exact words first.</div>}
+            {SHOW_SHARE && status.hasAgentHooks && (
+              <div className="hint">This site asks agents what you need. Sharing shows you the exact words first.</div>
+            )}
           </div>
         )}
         {error && <div className="error">{error}</div>}

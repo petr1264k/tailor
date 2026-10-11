@@ -7,7 +7,7 @@ import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Fact } from '@/types'
 import { resetDbForTests } from '@/archive'
 import { saveProfile, emptyProfile, getProfile } from '@/profile'
@@ -62,11 +62,12 @@ afterEach(async () => {
 })
 
 describe('profile page', () => {
-  it('renders Import, Profile and Receipts tabs without crashing', async () => {
+  it('renders the Import and Profile tabs without crashing; Receipts is hidden for the demo', async () => {
     await mount()
     expect(el.textContent).toContain('Import your chat history')
-    for (const label of ['Profile', 'Receipts', 'Import']) await click(label)
+    for (const label of ['Profile', 'Import']) await click(label)
     expect(el.textContent).toContain('Archive')
+    expect([...el.querySelectorAll('[role="tab"]')].map((t) => t.textContent)).not.toContain('Receipts')
   })
 
   it('imports one ChatGPT file and shows per-source stats', async () => {
@@ -113,10 +114,22 @@ describe('profile page', () => {
     await mount()
     await click('Profile')
     expect(el.textContent).toContain('owns a PS5')
+    expect(el.textContent).not.toContain('ChatGPT / Claude')
+    expect(el.textContent).not.toContain('Only facts with your own words')
+    expect(el.textContent).not.toContain('Export JSON')
+
+    // Grounding is off by default; "Show grounding" brings the quotes in, labelled by source.
+    expect(el.querySelector('.evidence')).toBeNull()
+    const showGrounding = [...el.querySelectorAll('label')].find((l) => l.textContent?.includes('Show grounding'))!.querySelector('input')!
+    await act(async () => showGrounding.click())
+    await flush()
     const quote = el.querySelector('.q.own')?.textContent
     expect(quote).toContain('✎ Your words')
     expect(quote).toContain('ChatGPT · Aug 3, 2026')
     expect(quote).toContain('just got a PS5, which TV should I get?')
+    await act(async () => showGrounding.click())
+    await flush()
+    expect(el.querySelector('.evidence')).toBeNull()
 
     await typeInto('input[type="search"]', 'zzz')
     expect(el.textContent).toContain('No facts match these filters.')
@@ -130,5 +143,25 @@ describe('profile page', () => {
     await click('Restore')
     expect(el.querySelector('.fact.deleted')).toBeNull()
     expect((await getProfile('default')).facts[0]!.userStatus).toBe('kept')
+  })
+
+  it('lists the sections in "Jump to" and scrolls to them; the kept-out card shows only with an omitted list', async () => {
+    const fact: Fact = { id: 'f1', category: 'owns', value: 'owns a PS5', confidence: 0.8, source: 'chat', evidence: [] }
+    await saveProfile({ ...emptyProfile(), facts: [fact] }, 'default', { omitted: [{ category: 'finances', count: 8, kinds: 'tax' }] })
+    const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
+    await mount()
+    await click('Profile')
+    const toc = () => [...el.querySelectorAll('.pf-toc button')].map((b) => b.textContent)
+    expect(toc()).toEqual(['What you own and follow 1', 'What Tailor kept out 8'])
+    expect(el.querySelector('#kept-out')?.textContent).toContain('finances')
+    await act(async () => (el.querySelector('.pf-toc button:last-child') as HTMLButtonElement).click())
+    expect(scrollTo).toHaveBeenCalled()
+    scrollTo.mockRestore()
+
+    await saveProfile({ ...emptyProfile(), facts: [fact] }, 'default', { omitted: undefined })
+    await click('Import')
+    await click('Profile')
+    expect(el.querySelector('#kept-out')).toBeNull()
+    expect(toc()).toEqual(['What you own and follow 1'])
   })
 })

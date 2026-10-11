@@ -7,6 +7,8 @@ import type { Evidence, Fact, FactCategory } from '@/types'
 import { siteName, truncateQuote } from '@/profile'
 
 export interface FactGroupDef {
+  /** Anchor id for the section card (the "Jump to" row in ProfileTab). */
+  id: string
   title: string
   note: string
   cats: FactCategory[]
@@ -15,17 +17,20 @@ export interface FactGroupDef {
 /** Every FactCategory is in exactly one group (helpers test checks it). */
 export const FACT_GROUPS: FactGroupDef[] = [
   {
+    id: 'group-read',
     title: 'How you read',
     note: 'Tailor uses these to choose what a page leads with, what it collapses, and which language it answers in.',
     cats: ['reading', 'visual', 'dislikes', 'language'],
   },
   {
+    id: 'group-questions',
     title: 'Questions you keep asking',
     note: "Tailor's first-screen test asks whether a page answers questions like these before you scroll.",
     cats: ['question'],
   },
-  { title: 'What you do', note: 'Sets the depth and vocabulary of a rewrite.', cats: ['expertise', 'goal'] },
+  { id: 'group-do', title: 'What you do', note: 'Sets the depth and vocabulary of a rewrite.', cats: ['expertise', 'goal'] },
   {
+    id: 'group-own',
     title: 'What you own and follow',
     note: 'Gives a page something concrete to check against: your gear, your interests, your limits.',
     cats: ['owns', 'interest', 'constraint'],
@@ -114,10 +119,4 @@ export function groupForView(facts: Fact[]): (FactGroupDef & { facts: Fact[] })[
           deleted(a) - deleted(b) || g.cats.indexOf(a.category) - g.cats.indexOf(b.category) || b.confidence - a.confidence,
       ),
   }))
-}
-
-/** "Weak prior Beta(α 1.80, β 1) · your clicks update it" */
-export function formatPrior(prior: { alpha: number; beta: number }): string {
-  const n = (x: number) => (Number.isInteger(x) ? String(x) : x.toFixed(2))
-  return `Weak prior Beta(α ${prior.alpha.toFixed(2)}, β ${n(prior.beta)}) · your clicks update it`
 }

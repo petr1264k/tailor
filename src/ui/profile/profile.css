@@ -49,98 +49,72 @@ body { font-size: 16px; line-height: 1.55; }
 .load-head { gap: 6px; padding-top: 16px; border-top: 1px solid var(--line-2); }
 .progress { font: 500 12px/1.4 var(--mono); letter-spacing: 0.04em; color: var(--muted); }
 
-/* ── Profile tab (ProfileTab.tsx): the look of the hand-built profile artifact (factView.ts) ──
-   Display serif from the system (Bodoni 72 / Didot on macOS, Georgia elsewhere): nothing is fetched, like the theme.
-   Gold tape-measure confidence and gold "own words" highlight; the rest stays on the coframe tokens. */
-.pf {
-  --pf-display: 'Bodoni Moda', 'Bodoni 72', Didot, Georgia, serif;
-  --pf-chip: #e9ecf1;
-  --pf-tick: #8b93a2;
-  --pf-gold: #8e6200;
-  --pf-gold-fill: #d9a22b;
-  --pf-gold-soft: #f6eacb;
-  display: grid; gap: 28px; max-width: 980px; width: 100%; margin: 0 auto; padding-top: 12px;
-}
-.pf-eyebrow, .pf-cat, .pf-stats dt, .pf-note, .pf .src, .pf-prior, .pf-result {
-  font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted);
-}
-.pf-note, .pf .src, .pf-prior, .pf-result { text-transform: none; letter-spacing: 0.01em; font-size: 12px; }
+/* ── Profile tab (ProfileTab.tsx): coframe cards like the Import tab, plus the tape-measure confidence in the brand accent ── */
+.pf { --tape-bg: var(--accent-soft); --tape-tick: rgba(45, 40, 96, 0.35); --tape-fill: var(--accent); }
+.pf .card-head h2 { display: flex; align-items: center; gap: 10px; }
 
-.pf-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 24px; align-items: start; }
-.pf-title { min-width: 0; }
-.pf-eyebrow { margin: 0; }
-.pf h1 { font-family: var(--pf-display); font-weight: 500; font-size: clamp(34px, 5vw, 50px); line-height: 1.05; letter-spacing: -0.01em; margin: 10px 0 14px; text-wrap: balance; }
-.pf-lede { max-width: 62ch; margin: 0; color: var(--muted); font-size: 16px; }
-.pf-lede .pen { color: var(--pf-gold); font-weight: 600; }
-.pf-tools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
-.pf-stats { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0 24px; margin: 28px 0 0; }
-.pf-stats > div { border-top: 1px solid var(--ink); padding-top: 10px; min-width: 0; }
-.pf-stats dd { margin: 4px 0 0; font-family: var(--pf-display); font-size: 26px; line-height: 1.15; font-variant-numeric: lining-nums tabular-nums; }
-.pf-stats dd small { display: block; font-family: var(--sans); font-size: 13px; color: var(--muted); margin-top: 2px; }
-
-/* Filter bar: sticks under the top bar (its height is measured in ProfileTab) */
-.pf-filters { position: sticky; z-index: 5; background: var(--bg); padding-block: 12px; border-bottom: 1px solid var(--line-2); display: grid; gap: 10px; }
+/* Filter card: sticks under the top bar (its height is measured in ProfileTab) */
+.pf-filters { position: sticky; z-index: 5; display: grid; gap: 12px; padding: 14px 18px; }
 .pf-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 button.pf-chip {
-  font: 500 13px/1 var(--sans); color: var(--ink); background: var(--pf-chip); border: 1px solid transparent; border-radius: var(--r-full);
-  padding: 7px 11px; display: inline-flex; gap: 6px; align-items: baseline; box-shadow: none;
+  display: inline-flex; align-items: center; gap: 7px; padding: 6px 10px; border-radius: var(--r-full); box-shadow: none;
+  font: 500 11px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted);
+  background: var(--bg); border: 1px solid var(--line-2);
 }
-.pf-chip .n { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
-button.pf-chip:hover:not(:disabled) { border-color: var(--pf-tick); box-shadow: none; }
-button.pf-chip[aria-pressed='true'] { background: var(--ink); color: var(--bg); }
-.pf-chip[aria-pressed='true'] .n { color: inherit; opacity: 0.75; }
-.pf-row { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; }
-.pf-search { flex: 1 1 220px; min-width: 0; }
-.pf-toggle { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; }
-.pf-toggle input { accent-color: var(--pf-gold-fill); width: 16px; height: 16px; }
+button.pf-chip:hover:not(:disabled) { color: var(--ink); border-color: var(--line); box-shadow: none; }
+button.pf-chip[aria-pressed='true'] { background: var(--ink); border-color: var(--ink); color: #fff; }
+.pf-chip .n { letter-spacing: 0; opacity: 0.7; }
+/* "Jump to" row: section links above the chips */
+.pf-toc { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 18px; padding-bottom: 12px; border-bottom: 1px solid var(--line-2); }
+.pf-toc button {
+  display: inline-flex; align-items: center; gap: 7px; border: 0; background: none; box-shadow: none; padding: 4px 0;
+  font-size: 14.5px; color: var(--ink); border-radius: var(--r-sm);
+}
+.pf-toc button:hover:not(:disabled) { color: var(--accent); box-shadow: none; }
+.pf-toc button:hover .count { background: var(--accent-soft); color: var(--accent); }
+.pf-row { gap: 10px 18px; }
+.pf-search { flex: 1 1 240px; min-width: 0; }
+.pf-toggle { gap: 8px; font-size: 14px; cursor: pointer; }
 .pf-result { margin-left: auto; }
 
-/* Groups and facts */
-.pf-groups { display: grid; gap: 44px; }
-.pf-group { display: grid; gap: 14px; align-content: start; }
-.pf-group-head { display: grid; gap: 4px; }
-.pf-group h2 { font-family: var(--pf-display); font-weight: 500; font-size: 28px; line-height: 1.15; margin: 0; text-wrap: balance; }
-.pf-note { margin: 0; }
-.pf-facts { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
-.pf .fact { background: var(--card); border: 1px solid var(--line-2); border-radius: var(--r-md); padding: 14px 16px; display: grid; gap: 10px; min-width: 0; }
-.pf .fact.compact { gap: 4px; padding: 12px 14px; }
-.pf .fact-head { display: flex; gap: 8px 20px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; }
-.pf .fact-main { min-width: 0; flex: 1 1 320px; display: grid; gap: 4px; }
-.pf .fact-value { margin: 0; font-size: 17px; font-weight: 600; line-height: 1.35; letter-spacing: 0; }
-.pf .fact.compact .fact-value { font-size: 15px; font-weight: 500; }
+/* Fact rows inside each group card */
+.pf .facts { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.pf .fact {
+  border: 1px solid var(--line-2); border-radius: var(--r-xl); padding: 14px 16px; display: grid; gap: 10px; background: var(--card); min-width: 0;
+  transition: box-shadow var(--fast) var(--ease), border-color var(--fast) var(--ease);
+}
+.pf .fact:hover { border-color: var(--line); box-shadow: var(--shadow-1); }
+.pf .fact-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px 20px; flex-wrap: wrap; }
+.pf .fact-main { min-width: 0; flex: 1 1 320px; display: grid; gap: 6px; }
+.pf .fact-tags { gap: 6px; }
+.pf .fact-value { font-size: 17px; font-weight: 500; letter-spacing: -0.01em; line-height: 1.35; }
 .pf .fact.deleted .fact-value { text-decoration: line-through; color: var(--muted); }
-.pf .fact.deleted .pf-why { opacity: 0.5; }
-.pf-conf { display: inline-flex; align-items: center; gap: 8px; flex: none; padding-top: 4px; }
-.pf .tape { position: relative; width: 112px; height: 12px; background: var(--pf-chip); border-radius: 2px; overflow: hidden; }
-.pf .tape > i { position: absolute; inset: 0 auto 0 0; width: calc(var(--c) * 100%); background: var(--pf-gold-fill); }
+.pf .fact.deleted .evidence { opacity: 0.5; }
+.pf .edit { flex: 1; min-width: 260px; }
+
+/* Tape-measure confidence (from the profile artifact): accent fill, ticks every tenth */
+.pf-conf { display: inline-flex; align-items: center; gap: 8px; flex: none; padding-top: 2px; }
+.pf .tape { position: relative; width: 112px; height: 12px; background: var(--tape-bg); border-radius: 2px; overflow: hidden; }
+.pf .tape > i { position: absolute; inset: 0 auto 0 0; width: calc(var(--c) * 100%); background: var(--tape-fill); }
 .pf .tape::after {
   content: ''; position: absolute; inset: 0; background-repeat: repeat-x; background-position: 0 100%; background-size: 10% 45%;
-  background-image: linear-gradient(to right, var(--pf-tick) 1px, transparent 1px);
+  background-image: linear-gradient(to right, var(--tape-tick) 1px, transparent 1px);
 }
-.pf .num { font-family: var(--mono); font-size: 13px; font-variant-numeric: tabular-nums; min-width: 3ch; }
+.pf-conf .num { font: 500 13px/1 var(--mono); font-variant-numeric: tabular-nums; min-width: 3ch; }
 
-.pf-why { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+/* Grounding ("Show grounding"): the quotes behind a fact, own words highlighted */
+.pf .evidence { list-style: none; margin: 0; padding: 2px 0 2px 14px; border-left: 2px solid var(--line); display: grid; gap: 8px; }
 .pf .q { display: grid; gap: 2px; min-width: 0; }
-.pf .src { display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: baseline; }
-.pf .kind { font-weight: 500; color: var(--ink); }
-.pf .q.own .kind { color: var(--pf-gold); }
-.pf .q blockquote { margin: 0; font-size: 14.5px; overflow-wrap: anywhere; }
-.pf .q blockquote::before { content: '\201C'; }
-.pf .q blockquote::after { content: '\201D'; }
-.pf .q:not(.own) blockquote { color: var(--muted); }
-.pf .q.own blockquote { background: var(--pf-gold-soft); padding: 2px 6px; border-radius: 3px; justify-self: start; }
-button.pf-more { font-size: 13px; }
-
-.pf-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px 16px; flex-wrap: wrap; }
+.pf .src { font: 500 11.5px/1.4 var(--mono); color: var(--muted); }
+.pf .kind { color: var(--ink); }
+.pf .q.own .kind { color: var(--accent); }
+.pf .quote { font-size: 14.5px; color: var(--muted); overflow-wrap: anywhere; }
+.pf .q.own .quote { color: var(--ink); background: var(--accent-soft); padding: 2px 6px; border-radius: var(--r-sm); justify-self: start; }
+.pf .fact-foot { gap: 8px 16px; }
 .pf .actions { display: flex; gap: 6px; margin-left: auto; }
-.pf .actions button { padding: 4px 10px; font-size: 13px; border-radius: var(--r-sm); background: transparent; }
-.pf-edit { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-.pf-edit input { flex: 1 1 260px; min-width: 0; }
-.pf-empty { background: var(--card); border: 1px dashed var(--line); border-radius: var(--r-md); padding: 24px; text-align: center; display: grid; gap: 10px; justify-items: center; color: var(--muted); }
-.pf-empty p { margin: 0; }
 
 /* ── Split ── */
-.split { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; align-items: start; }
+.split { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; align-items: start; }
 
 /* ── Receipts ── */
 .reply { white-space: pre-wrap; margin: 0; }
@@ -148,9 +122,6 @@ button.pf-more { font-size: 13px; }
 
 @media (max-width: 900px) {
   .two-col, .hero, .split { grid-template-columns: 1fr; }
-  .pf-head { grid-template-columns: minmax(0, 1fr); }
-  .pf-tools { justify-content: flex-start; margin-top: 16px; }
-  .pf-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 20px; }
   .pf-result { margin-left: 0; }
   .hero { padding: 28px; }
   .topbar-inner { gap: 18px; }

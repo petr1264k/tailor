@@ -23,10 +23,11 @@ import { ProfileTab } from './ProfileTab'
 import { ReceiptsTab } from './ReceiptsTab'
 
 type Tab = 'import' | 'profile' | 'receipts'
-const TABS: { id: Tab; label: string }[] = [
+/** Receipts is hidden for the demo (sharing is off): set `hidden: false` to bring the tab back. */
+const TABS: { id: Tab; label: string; hidden?: boolean }[] = [
   { id: 'import', label: 'Import' },
   { id: 'profile', label: 'Profile' },
-  { id: 'receipts', label: 'Receipts' },
+  { id: 'receipts', label: 'Receipts', hidden: true },
 ]
 
 type ProfileEntry = { id: string; name: string }
@@ -86,7 +87,7 @@ export function App() {
         <div className="topbar-inner">
           <Brand />
           <nav className="tabs" role="tablist">
-            {TABS.map((t) => (
+            {TABS.filter((t) => !t.hidden).map((t) => (
               <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)}>
                 {t.label}
               </button>

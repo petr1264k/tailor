@@ -1,23 +1,25 @@
 /**
- * Profile tab (CONTEXT.txt §3.4; demo §9 0:00–0:45). Look: the hand-built profile artifact (factView.ts).
- *  - Header: display title, lede, four stats (facts, quotes, messages read, chat dates); view switch and Export JSON.
- *  - Sticky filter bar: category chips with counts, search, "only facts with your own words".
- *  - Facts grouped by how Tailor uses them. Each fact: category, value, tape-measure confidence, the quotes behind it
- *    (own words highlighted), the prior, Keep / Edit / Delete. Deleted facts stay visible, struck through, with Restore.
- *    Delete one live on stage.
+ * Profile tab (CONTEXT.txt §3.4; demo §9 0:00–0:45). Look: coframe, like the Import tab (src/ui/theme.css), with the
+ * tape-measure confidence from the hand-built profile artifact, in the brand accent.
+ *  - Hero: title and lede; white card with the stats (facts, quotes, messages read, chat dates).
+ *  - Sticky filter card: a "Jump to" row of sections, category chips with counts, search, "Show grounding".
+ *  - One card per group of how Tailor uses a fact (factView.ts). Each fact: category, value, tape confidence,
+ *    Edit / Delete; with "Show grounding" on, also the quotes behind it (own words highlighted).
+ *    Deleted facts stay visible, struck through, with Restore. Delete one live on stage.
  *  - Split: what ChatGPT knows, what Claude knows, the overlap (live facts only).
+ * Hidden for the demo (no ChatGPT export, sharing off): the split switch, the own-words filter and Export JSON
+ * (SHOW_SPLIT, SHOW_OWN_WORDS_FILTER, SHOW_EXPORT).
  * Only owner-approved facts and short quotes are shown, never raw chats (§0).
  */
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { Fact, FactCategory, Profile, SourceSplit } from '@/types'
-import { activeFacts, deleteFact, getProfile, sourceSplit, truncateQuote, updateFact } from '@/profile'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { Fact, FactCategory, OmittedItem, Profile, SourceSplit } from '@/types'
+import { activeFacts, deleteFact, getOmitted, getProfile, sourceSplit, truncateQuote, updateFact } from '@/profile'
 import { LAYOUT_LABELS, layoutChoiceOf } from '@/learn'
 import { useExtractJob } from './useExtractJob'
 import { attempt, errorText, monthRange, type Attempt } from './helpers'
 import {
   CATEGORY_ORDER,
   NO_FILTER,
-  formatPrior,
   groupForView,
   hasOwnWords,
   matchesFilter,
@@ -26,6 +28,33 @@ import {
 } from './factView'
 
 type View = 'category' | 'split'
+
+/** Hidden for the demo: set true to bring each back. */
+const SHOW_SPLIT = false
+const SHOW_OWN_WORDS_FILTER = false
+const SHOW_EXPORT = false
+
+const SHOW_GROUNDING_KEY = 'tailor.profile.showGrounding'
+
+/** "Show grounding" (off by default): a per-browser view preference (localStorage), so it survives a reload on stage. */
+function useShowGrounding(): [boolean, (on: boolean) => void] {
+  const [on, setOn] = useState(() => {
+    try {
+      return localStorage.getItem(SHOW_GROUNDING_KEY) === '1'
+    } catch {
+      return false
+    }
+  })
+  const set = (next: boolean) => {
+    setOn(next)
+    try {
+      localStorage.setItem(SHOW_GROUNDING_KEY, next ? '1' : '0')
+    } catch {
+      // Storage blocked: the choice lasts until the page closes.
+    }
+  }
+  return [on, set]
+}
 
 /** Learned layout facts ('layout:specs_first') read as "Layout: Specs first"; everything else as stored. */
 function factLabel(fact: Fact): string {
@@ -46,7 +75,7 @@ function downloadProfile(profileId: string, profile: Profile): void {
   setTimeout(() => URL.revokeObjectURL(a.href), 0)
 }
 
-/** Height of the page's sticky top bar, so the filter bar sticks just below it. */
+/** Height of the page's sticky top bar, so the filter card sticks just below it. */
 function useTopbarHeight(): number {
   const [h, setH] = useState(0)
   useEffect(() => {
@@ -62,8 +91,13 @@ export function ProfileTab({ profileId, profileName }: { profileId: string; prof
   const [profile, setProfile] = useState<Attempt<Profile> | null>(null)
   const [view, setView] = useState<View>('category')
   const [actionError, setActionError] = useState<string | null>(null)
+  const [omitted, setOmitted] = useState<OmittedItem[]>([])
 
-  const reload = useCallback(async () => setProfile(await attempt(() => getProfile(profileId))), [profileId])
+  const reload = useCallback(async () => {
+    setProfile(await attempt(() => getProfile(profileId)))
+    const o = await attempt(() => getOmitted(profileId))
+    setOmitted(o.ok ? o.value : [])
+  }, [profileId])
   useEffect(() => void reload(), [reload])
 
   // A run into this profile just finished (maybe while this tab was open): show the new facts without a manual reload.
@@ -84,7 +118,6 @@ export function ProfileTab({ profileId, profileName }: { profileId: string; prof
   }
 
   const actions: FactActions = {
-    keep: (f) => act(() => updateFact(f.id, { userStatus: 'kept' }, profileId)),
     edit: (f, value) => act(() => updateFact(f.id, { value, userStatus: 'edited' }, profileId)),
     remove: (f) => act(() => deleteFact(f.id, profileId)),
     restore: (f) => act(() => updateFact(f.id, { userStatus: 'kept' }, profileId)),
@@ -94,78 +127,138 @@ export function ProfileTab({ profileId, profileName }: { profileId: string; prof
   if (!profile.ok) return <div className="error">Profile: {profile.error}</div>
   const p = profile.value
   return (
-    <div className="pf">
-      <header className="pf-head">
-        <div className="pf-title">
-          <p className="pf-eyebrow">
-            Tailor · {profileName} · profile v{p.version}
-          </p>
+    <div className="stack pf">
+      <section className="hero">
+        <div className="hero-copy">
+          <span className="tag">Your profile</span>
           <h1>What Tailor knows about you</h1>
-          <p className="pf-lede">
-            Each fact lists the quotes behind it. Quotes marked <span className="pen">✎ Your words</span> come from your own messages.
-            Keep, edit or delete any fact: a deleted fact never reaches a page or a site.
-          </p>
+          <p>Learned from your own messages. Edit or delete any fact: a deleted fact never reaches a page or a site.</p>
+          {(SHOW_SPLIT || SHOW_EXPORT) && (
+            <div className="row">
+              {SHOW_SPLIT && (
+                <div className="seg" role="tablist" aria-label="View">
+                  <button role="tab" aria-selected={view === 'category'} onClick={() => setView('category')}>
+                    By category
+                  </button>
+                  <button role="tab" aria-selected={view === 'split'} onClick={() => setView('split')}>
+                    ChatGPT / Claude
+                  </button>
+                </div>
+              )}
+              {SHOW_EXPORT && (
+                <button className="sm" title="Download this profile for the eval harness (data/profiles/)" onClick={() => downloadProfile(profileId, p)}>
+                  Export JSON
+                </button>
+              )}
+            </div>
+          )}
         </div>
-        <div className="pf-tools">
-          <div className="seg" role="tablist" aria-label="View">
-            <button role="tab" aria-selected={view === 'category'} onClick={() => setView('category')}>
-              By category
-            </button>
-            <button role="tab" aria-selected={view === 'split'} onClick={() => setView('split')}>
-              ChatGPT / Claude
-            </button>
+        <div className="hero-card">
+          <div className="row between">
+            <span className="label">{profileName}</span>
+            <span className="chip">Version {p.version}</span>
           </div>
-          <button className="sm" title="Download this profile for the eval harness (data/profiles/)" onClick={() => downloadProfile(profileId, p)}>
-            Export JSON
-          </button>
+          <ProfileStats profile={p} />
         </div>
-        <ProfileStats profile={p} />
-      </header>
+      </section>
       {actionError && <div className="error">{actionError}</div>}
-      {view === 'category' ? <FactsView facts={p.facts} actions={actions} /> : <SplitView profile={p} />}
+      {view === 'category' ? (
+        <FactsView facts={p.facts} actions={actions} keptOut={omitted.reduce((n, o) => n + o.count, 0)} />
+      ) : (
+        <SplitView profile={p} />
+      )}
+      {omitted.length > 0 && <OmittedCard items={omitted} />}
     </div>
+  )
+}
+
+const KEPT_OUT_ID = 'kept-out'
+
+/** "Left out on purpose": what a hand-built profile file says was found in the chats and kept out. Only kinds, never items. */
+function OmittedCard({ items }: { items: OmittedItem[] }) {
+  const total = items.reduce((n, i) => n + i.count, 0)
+  return (
+    <section id={KEPT_OUT_ID} className="card stack">
+      <div className="card-head">
+        <span className="tag">Left out on purpose</span>
+        <h2>
+          What Tailor kept out <span className="count">{total}</span>
+        </h2>
+        <p className="muted small">
+          Found in your chats and deliberately not turned into facts, so no page or site sees them. Only the kind of item is listed, never the
+          item itself.
+        </p>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Category</th>
+            <th className="num">Items</th>
+            <th>Kind</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((i, n) => (
+            <tr key={n}>
+              <td>{i.category}</td>
+              <td className="num">{i.count}</td>
+              <td className="muted">{i.kinds}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
   )
 }
 
 function ProfileStats({ profile }: { profile: Profile }) {
   const live = activeFacts(profile)
   const deleted = profile.facts.length - live.length
-  const quotes = live.flatMap((f) => f.evidence)
-  const ownQuotes = quotes.filter((e) => quoteSource(e).kind === 'own').length
+  const quotes = live.flatMap((f) => f.evidence).length
+  const own = live.filter(hasOwnWords).length
   const { conversations, messages, from, to } = profile.stats
-  const range = monthRange(from, to)
-  const stats: [string, string, string][] = [
-    ['Facts', String(live.length), `${live.filter(hasOwnWords).length} backed by your own words${deleted > 0 ? ` · ${deleted} deleted` : ''}`],
-    ['Quotes', String(quotes.length), `${ownQuotes} in your own words`],
-    ['Your messages read', messages > 0 ? messages.toLocaleString() : '—', messages > 0 ? `in ${conversations.toLocaleString()} conversations` : 'no chats imported yet'],
-    ['Chats dated', range || '—', `profile version ${profile.version}`],
-  ]
+  const notes = [`${own} of ${live.length} facts backed by your own words`, deleted > 0 ? `${deleted} deleted` : '', messages > 0 ? `${conversations.toLocaleString()} conversations` : '']
   return (
-    <dl className="pf-stats">
-      {stats.map(([label, value, note]) => (
-        <div key={label}>
-          <dt>{label}</dt>
-          <dd>
-            {value}
-            <small>{note}</small>
-          </dd>
+    <div className="stack">
+      <div className="stats">
+        <div className="stat">
+          <span className="label">Facts</span>
+          <b>{live.length}</b>
         </div>
-      ))}
-    </dl>
+        <div className="stat">
+          <span className="label">Quotes</span>
+          <b>{quotes}</b>
+        </div>
+        <div className="stat">
+          <span className="label">Your messages</span>
+          <b>{messages > 0 ? messages.toLocaleString() : '—'}</b>
+        </div>
+        <div className="stat">
+          <span className="label">From – to</span>
+          <b className="text">{monthRange(from, to) || '—'}</b>
+        </div>
+      </div>
+      <div className="muted small">{notes.filter(Boolean).join(' · ')}</div>
+    </div>
   )
 }
 
 /** Each resolves to true on success; errors are shown by ProfileTab. */
 interface FactActions {
-  keep: (f: Fact) => Promise<boolean>
   edit: (f: Fact, value: string) => Promise<boolean>
   remove: (f: Fact) => Promise<boolean>
   restore: (f: Fact) => Promise<boolean>
 }
 
-function FactsView({ facts, actions }: { facts: Fact[]; actions: FactActions }) {
+/**
+ * The "Jump to" row lists the sections on screen (groups that pass the filter) with their live-fact counts, plus
+ * "What Tailor kept out" when `keptOut` > 0 (OmittedCard).
+ */
+function FactsView({ facts, actions, keptOut }: { facts: Fact[]; actions: FactActions; keptOut: number }) {
   const [filter, setFilter] = useState<FactFilter>(NO_FILTER)
+  const [grounding, setGrounding] = useShowGrounding()
   const top = useTopbarHeight()
+  const filtersRef = useRef<HTMLElement>(null)
   const groups = useMemo(() => groupForView(facts), [facts])
   const live = useMemo(() => facts.filter((f) => f.userStatus !== 'deleted'), [facts])
   const counts = useMemo(() => {
@@ -175,11 +268,7 @@ function FactsView({ facts, actions }: { facts: Fact[]; actions: FactActions }) 
   }, [live])
 
   if (facts.length === 0) {
-    return (
-      <div className="pf-empty">
-        <p>No facts yet. On the Import tab, import an export and run Extract profile, or load a saved profile.</p>
-      </div>
-    )
+    return <div className="card muted">No facts yet. On the Import tab, import an export and run Extract profile, or load a saved profile.</div>
   }
 
   const shown = (f: Fact) => matchesFilter(f, filter, factLabel(f))
@@ -188,16 +277,39 @@ function FactsView({ facts, actions }: { facts: Fact[]; actions: FactActions }) 
   const pick = (category: FactCategory | 'all') =>
     setFilter((f) => ({ ...f, category: f.category === category && category !== 'all' ? 'all' : category }))
 
+  /** Scrolls a section card to just below the sticky top bar and this filter card. */
+  function jumpTo(id: string) {
+    const target = document.getElementById(id)
+    if (!target) return
+    const covered = top + 12 + (filtersRef.current?.offsetHeight ?? 0) + 16
+    window.scrollTo({ top: target.getBoundingClientRect().top + window.scrollY - covered, behavior: 'smooth' })
+  }
+
+  const toc = [
+    ...visibleGroups.map((g) => ({ id: g.id, title: g.title, n: g.facts.filter((f) => f.userStatus !== 'deleted').length })),
+    ...(keptOut > 0 ? [{ id: KEPT_OUT_ID, title: 'What Tailor kept out', n: keptOut }] : []),
+  ]
+
   return (
     <>
-      <section className="pf-filters" style={{ top }} aria-label="Filter facts">
+      <section ref={filtersRef} className="card pf-filters" style={{ top: top + 12 }} aria-label="Filter facts">
+        {toc.length > 0 && (
+          <nav className="pf-toc" aria-label="Sections">
+            <span className="label">Jump to</span>
+            {toc.map((s) => (
+              <button key={s.id} type="button" onClick={() => jumpTo(s.id)}>
+                {s.title} <span className="count">{s.n}</span>
+              </button>
+            ))}
+          </nav>
+        )}
         <div className="pf-chips" role="group" aria-label="Category">
           <Chip label="All" n={live.length} pressed={filter.category === 'all'} onClick={() => pick('all')} />
           {CATEGORY_ORDER.filter((c) => counts.get(c)).map((c) => (
             <Chip key={c} label={c} n={counts.get(c)!} pressed={filter.category === c} onClick={() => pick(c)} />
           ))}
         </div>
-        <div className="pf-row">
+        <div className="row pf-row">
           <input
             className="pf-search"
             type="search"
@@ -206,39 +318,46 @@ function FactsView({ facts, actions }: { facts: Fact[]; actions: FactActions }) 
             value={filter.query}
             onChange={(e) => setFilter((f) => ({ ...f, query: e.target.value }))}
           />
-          <label className="pf-toggle">
-            <input type="checkbox" checked={filter.ownOnly} onChange={(e) => setFilter((f) => ({ ...f, ownOnly: e.target.checked }))} />
-            Only facts with your own words
+          {SHOW_OWN_WORDS_FILTER && (
+            <label className="row pf-toggle">
+              <input type="checkbox" checked={filter.ownOnly} onChange={(e) => setFilter((f) => ({ ...f, ownOnly: e.target.checked }))} />
+              Only facts with your own words
+            </label>
+          )}
+          <label className="row pf-toggle">
+            <input type="checkbox" checked={grounding} onChange={(e) => setGrounding(e.target.checked)} />
+            Show grounding
           </label>
-          <span className="pf-result" aria-live="polite">
-            Showing {shownLive} of {live.length} facts
+          <span className="label pf-result" aria-live="polite">
+            {shownLive} of {live.length} facts
           </span>
         </div>
       </section>
 
       {visibleGroups.length === 0 ? (
-        <div className="pf-empty">
-          <p>No facts match these filters.</p>
+        <div className="card row between">
+          <span className="muted">No facts match these filters.</span>
           <button className="sm" onClick={() => setFilter(NO_FILTER)}>
             Show all facts
           </button>
         </div>
       ) : (
-        <div className="pf-groups">
-          {visibleGroups.map((g) => (
-            <section key={g.title} className="pf-group">
-              <div className="pf-group-head">
-                <h2>{g.title}</h2>
-                <p className="pf-note">{g.note}</p>
-              </div>
-              <ul className="pf-facts">
-                {g.facts.map((f) => (
-                  <FactCard key={f.id} fact={f} actions={actions} />
-                ))}
-              </ul>
-            </section>
-          ))}
-        </div>
+        visibleGroups.map((g) => (
+          <section key={g.id} id={g.id} className="card stack">
+            <div className="card-head">
+              <span className="tag">{g.cats.join(' · ')}</span>
+              <h2>
+                {g.title} <span className="count">{g.facts.filter((f) => f.userStatus !== 'deleted').length}</span>
+              </h2>
+              <p className="muted small">{g.note}</p>
+            </div>
+            <ul className="facts">
+              {g.facts.map((f) => (
+                <FactRow key={f.id} fact={f} actions={actions} grounding={grounding} />
+              ))}
+            </ul>
+          </section>
+        ))
       )}
     </>
   )
@@ -247,7 +366,7 @@ function FactsView({ facts, actions }: { facts: Fact[]; actions: FactActions }) 
 function Chip({ label, n, pressed, onClick }: { label: string; n: number; pressed: boolean; onClick: () => void }) {
   return (
     <button type="button" className="pf-chip" aria-pressed={pressed} onClick={onClick}>
-      <span>{label}</span>
+      {label}
       <span className="n">{n}</span>
     </button>
   )
@@ -255,15 +374,27 @@ function Chip({ label, n, pressed, onClick }: { label: string; n: number; presse
 
 const MAX_QUOTES = 4
 
-function FactCard({ fact, actions }: { fact: Fact; actions: FactActions }) {
+/** The gold tape-measure confidence, kept from the profile artifact. */
+function Tape({ confidence }: { confidence: number }) {
+  const c = Math.min(1, Math.max(0, Number.isFinite(confidence) ? confidence : 0))
+  return (
+    <span className="pf-conf">
+      <span className="tape" role="img" aria-label={`Confidence ${c.toFixed(2)} of 1`} style={{ ['--c' as string]: c }}>
+        <i />
+      </span>
+      <span className="num">{c.toFixed(2)}</span>
+    </span>
+  )
+}
+
+/** `grounding` on shows the quotes behind the fact. */
+function FactRow({ fact, actions, grounding }: { fact: Fact; actions: FactActions; grounding: boolean }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(fact.value)
   const [busy, setBusy] = useState(false)
   const [allQuotes, setAllQuotes] = useState(false)
   const deleted = fact.userStatus === 'deleted'
-  const conf = Math.min(1, Math.max(0, Number.isFinite(fact.confidence) ? fact.confidence : 0))
   const quotes = allQuotes ? fact.evidence : fact.evidence.slice(0, MAX_QUOTES)
-  const eyebrow = [fact.category, fact.source === 'behavior' ? 'from your clicks' : '', fact.userStatus ?? ''].filter(Boolean).join(' · ')
 
   async function run(fn: () => Promise<boolean>): Promise<boolean> {
     setBusy(true)
@@ -276,10 +407,14 @@ function FactCard({ fact, actions }: { fact: Fact; actions: FactActions }) {
     <li className={deleted ? 'fact deleted' : 'fact'}>
       <div className="fact-head">
         <div className="fact-main">
-          <span className="pf-cat">{eyebrow}</span>
+          <span className="row fact-tags">
+            <span className="label">{fact.category}</span>
+            {fact.source === 'behavior' && <span className="chip accent">from your clicks</span>}
+            {fact.userStatus && fact.userStatus !== 'kept' && <span className="chip">{fact.userStatus}</span>}
+          </span>
           {editing ? (
             <form
-              className="pf-edit"
+              className="row"
               onSubmit={(e) => {
                 e.preventDefault()
                 const value = draft.trim()
@@ -287,7 +422,7 @@ function FactCard({ fact, actions }: { fact: Fact; actions: FactActions }) {
                 void run(() => actions.edit(fact, value)).then((ok) => ok && setEditing(false))
               }}
             >
-              <input type="text" autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} />
+              <input type="text" className="edit" autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} />
               <button type="submit" className="primary sm" disabled={busy || !draft.trim()}>
                 Save
               </button>
@@ -296,34 +431,30 @@ function FactCard({ fact, actions }: { fact: Fact; actions: FactActions }) {
               </button>
             </form>
           ) : (
-            <h3 className="fact-value">{factLabel(fact)}</h3>
+            <span className="fact-value">{factLabel(fact)}</span>
           )}
         </div>
-        <div className="pf-conf">
-          <span className="tape" role="img" aria-label={`Confidence ${conf.toFixed(2)} of 1`} style={{ ['--c' as string]: conf }}>
-            <i />
-          </span>
-          <span className="num">{conf.toFixed(2)}</span>
-        </div>
+        <Tape confidence={fact.confidence} />
       </div>
 
-      {quotes.length > 0 && (
-        <ul className="pf-why">
+      {grounding && quotes.length > 0 && (
+        <ul className="evidence">
           {quotes.map((e, i) => {
             const s = quoteSource(e)
             return (
               <li key={i} className={s.kind === 'own' ? 'q own' : 'q'}>
                 <span className="src">
-                  <span className="kind">{s.label}</span>
-                  <span>{[s.name, s.where].filter(Boolean).join(' · ')}</span>
+                  <span className="kind">{s.label}</span> {[s.name, s.where].filter(Boolean).join(' · ')}
                 </span>
-                <blockquote lang={/[Ѐ-ӿ]/.test(e.quote) ? 'ru' : undefined}>{truncateQuote(e.quote)}</blockquote>
+                <span className="quote" lang={/[Ѐ-ӿ]/.test(e.quote) ? 'ru' : undefined}>
+                  “{truncateQuote(e.quote)}”
+                </span>
               </li>
             )
           })}
           {fact.evidence.length > MAX_QUOTES && (
             <li>
-              <button className="link pf-more" onClick={() => setAllQuotes((v) => !v)}>
+              <button className="link small" onClick={() => setAllQuotes((v) => !v)}>
                 {allQuotes ? 'Show fewer quotes' : `Show ${fact.evidence.length - MAX_QUOTES} more`}
               </button>
             </li>
@@ -331,20 +462,17 @@ function FactCard({ fact, actions }: { fact: Fact; actions: FactActions }) {
         </ul>
       )}
 
-      <div className="pf-foot">
-        <span className="pf-prior">{fact.prior ? formatPrior(fact.prior) : ''}</span>
-        {!editing && (
+      {!editing && (
+        <div className="row fact-foot">
           <span className="actions">
             {deleted ? (
-              <button disabled={busy} onClick={() => void run(() => actions.restore(fact))}>
+              <button className="sm" disabled={busy} onClick={() => void run(() => actions.restore(fact))}>
                 Restore
               </button>
             ) : (
               <>
-                <button disabled={busy || fact.userStatus === 'kept'} onClick={() => void run(() => actions.keep(fact))}>
-                  Keep
-                </button>
                 <button
+                  className="sm"
                   disabled={busy}
                   onClick={() => {
                     setDraft(fact.value)
@@ -353,14 +481,14 @@ function FactCard({ fact, actions }: { fact: Fact; actions: FactActions }) {
                 >
                   Edit
                 </button>
-                <button className="danger" disabled={busy} onClick={() => void run(() => actions.remove(fact))}>
+                <button className="sm danger" disabled={busy} onClick={() => void run(() => actions.remove(fact))}>
                   Delete
                 </button>
               </>
             )}
           </span>
-        )}
-      </div>
+        </div>
+      )}
     </li>
   )
 }
@@ -383,22 +511,17 @@ function SplitView({ profile }: { profile: Profile }) {
   return (
     <div className="split">
       {columns.map((c) => (
-        <section key={c.title} className="pf-group">
-          <div className="pf-group-head">
-            <h2>{c.title}</h2>
-            <p className="pf-note">
-              {c.facts.length} {c.facts.length === 1 ? 'fact' : 'facts'}
-            </p>
-          </div>
+        <section key={c.title} className="card stack">
+          <h3>
+            {c.title} <span className="count">{c.facts.length}</span>
+          </h3>
           {c.facts.length === 0 ? (
-            <div className="pf-empty">
-              <p>Nothing here.</p>
-            </div>
+            <div className="muted small">Nothing here.</div>
           ) : (
-            <ul className="pf-facts">
+            <ul className="facts">
               {c.facts.map((f) => (
-                <li key={f.id} className="fact compact">
-                  <span className="pf-cat">{f.category}</span>
+                <li key={f.id} className="fact">
+                  <span className="label">{f.category}</span>
                   <span className="fact-value">{factLabel(f)}</span>
                 </li>
               ))}

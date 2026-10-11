@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { FACT_CATEGORIES, type Evidence, type Fact } from '@/types'
-import { CATEGORY_ORDER, NO_FILTER, formatPrior, fullDate, groupForView, hasOwnWords, matchesFilter, quoteSource } from './factView'
+import { CATEGORY_ORDER, NO_FILTER, fullDate, groupForView, hasOwnWords, matchesFilter, quoteSource } from './factView'
 
 const ev = (origin: string, title: string, quote = 'q', date = '2026-08-03'): Evidence => ({ origin, title, date, quote })
 
@@ -66,9 +66,4 @@ describe('matchesFilter', () => {
     expect(matchesFilter(own, { ...NO_FILTER, query: 'synth' })).toBe(false)
     expect(matchesFilter(own, { ...NO_FILTER, query: 'layout' }, 'Layout: Specs first')).toBe(true)
   })
-})
-
-it('formats the prior like the artifact', () => {
-  expect(formatPrior({ alpha: 1.8, beta: 1 })).toBe('Weak prior Beta(α 1.80, β 1) · your clicks update it')
-  expect(formatPrior({ alpha: 3, beta: 1.5 })).toBe('Weak prior Beta(α 3.00, β 1.50) · your clicks update it')
 })

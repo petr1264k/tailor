@@ -1,5 +1,5 @@
 /**
- * Popup (Owner: Petr). Key entry, active profile, "Tailor this page" / "Show original" / "Share with this site",
+ * Popup (Owner: Petr). Key entry, active profile (switch, rename), "Tailor this page" / "Show original" / "Share with this site",
  * status with gate counts (§3.6), "Tailor pages automatically as they load" (§3.5, on by default), demo mode (§9, on by
  * default: the changes play top to bottom with motion). CONTEXT.txt §3.5–3.9, §4.
  * Runs in the extension origin: reads settings and profiles directly; talks to the page via sendToTab.
@@ -10,6 +10,7 @@ import { getSettings, setSettings } from '@/settings'
 import { send, sendToTab, type ContentCommand, type ContentStatus } from '@/messages'
 import { listProfiles } from '@/profile'
 import { attempt } from '../profile/helpers'
+import { renameProfile } from '../profile/store'
 import { Brand } from '../Brand'
 import { describeStatus } from './status'
 
@@ -18,6 +19,13 @@ const NOT_RUNNING = 'Tailor is not on this tab. Switch to a normal web page (Chr
 const SHOW_SHARE = false
 const POLL_MS = 1000
 const POLL_MAX = 90
+
+type ProfileEntry = { id: string; name: string }
+
+/** 'default' → 'Default': what the profile module names a profile it creates lazily. */
+function fallbackName(id: string): string {
+  return id.charAt(0).toUpperCase() + id.slice(1)
+}
 
 async function activeTabId(): Promise<number | undefined> {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
@@ -31,7 +39,10 @@ export function App() {
   const [hasKey, setHasKey] = useState<boolean | null>(null)
   const [editingKey, setEditingKey] = useState(false)
   const [apiTest, setApiTest] = useState<string | null>(null)
-  const [profileName, setProfileName] = useState('')
+  const [profiles, setProfiles] = useState<ProfileEntry[]>([])
+  const [activeId, setActiveId] = useState('')
+  const [renaming, setRenaming] = useState(false)
+  const [newName, setNewName] = useState('')
   const [autoTailor, setAutoTailor] = useState(true)
   const [demoMode, setDemoMode] = useState(true)
   const [status, setStatus] = useState<ContentStatus | null>(null)
@@ -46,10 +57,10 @@ export function App() {
       setHasKey(!!s.value.anthropicKey)
       setAutoTailor(s.value.autoTailorOnLoad)
       setDemoMode(s.value.demoMode)
-      setProfileName(s.value.activeProfileId)
+      setActiveId(s.value.activeProfileId)
       const list = await attempt(listProfiles)
-      const name = list.ok ? list.value.find((p) => p.id === s.value.activeProfileId)?.name : undefined
-      if (name) setProfileName(name)
+      if (list.ok) setProfiles(list.value.map((p) => ({ id: p.id, name: p.name })))
+      else setError(list.error)
     })()
     void command({ type: 'content/status' }, { quiet: true })
   }, [])
@@ -109,6 +120,35 @@ export function App() {
     }
   }
 
+  // The active id may not be stored yet (getProfile creates it lazily), so always offer it.
+  const options = profiles.some((p) => p.id === activeId) ? profiles : [{ id: activeId, name: fallbackName(activeId) }, ...profiles]
+  const activeName = options.find((p) => p.id === activeId)?.name ?? ''
+
+  /** Switching takes effect on the next run: every run reads the active id from settings. */
+  async function switchProfile(id: string) {
+    const previous = activeId
+    setActiveId(id)
+    setRenaming(false)
+    const r = await attempt(() => setSettings({ activeProfileId: id }))
+    if (!r.ok) {
+      setActiveId(previous)
+      setError(r.error)
+    }
+  }
+
+  function startRename() {
+    setNewName(activeName)
+    setRenaming(true)
+  }
+
+  async function saveRename() {
+    const r = await attempt(() => renameProfile(activeId, newName))
+    if (!r.ok) return setError(r.error)
+    setError(null)
+    setProfiles((list) => (list.some((p) => p.id === activeId) ? list.map((p) => (p.id === activeId ? { ...p, name: r.value.name } : p)) : [{ id: activeId, name: r.value.name }, ...list]))
+    setRenaming(false)
+  }
+
   function testKey() {
     setApiTest('Testing…')
     void send('llm/test', {}).then(
@@ -123,12 +163,50 @@ export function App() {
         <Brand light />
         <div className="who">
           <span className="label">Profile</span>
-          <span>
-            <b>{profileName || '…'}</b>
-            <button className="link" onClick={() => void chrome.runtime.openOptionsPage()}>
-              Open
-            </button>
-          </span>
+          {renaming ? (
+            <form
+              className="who-row"
+              onSubmit={(e) => {
+                e.preventDefault()
+                void saveRename()
+              }}
+            >
+              <input
+                type="text"
+                autoFocus
+                aria-label="Profile name"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Escape' && setRenaming(false)}
+              />
+              <button type="submit" className="link" disabled={!newName.trim()}>
+                Save
+              </button>
+              <button type="button" className="link" onClick={() => setRenaming(false)}>
+                Cancel
+              </button>
+            </form>
+          ) : (
+            <span className="who-row">
+              <select aria-label="Active profile" value={activeId} disabled={!activeId} onChange={(e) => void switchProfile(e.target.value)}>
+                {activeId ? (
+                  options.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))
+                ) : (
+                  <option value="">…</option>
+                )}
+              </select>
+              <button className="link" disabled={!activeId} onClick={startRename}>
+                Rename
+              </button>
+              <button className="link" onClick={() => void chrome.runtime.openOptionsPage()}>
+                Open
+              </button>
+            </span>
+          )}
         </div>
       </header>
 

@@ -9,10 +9,23 @@ body { width: 360px; font-size: 14.5px; line-height: 1.45; }
   display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; color: #fff;
   background: linear-gradient(135deg, var(--indigo) 0%, #26224f 55%, var(--ink) 100%);
 }
-.who { display: grid; justify-items: end; gap: 3px; text-align: right; }
+.who { display: grid; justify-items: end; gap: 4px; text-align: right; min-width: 0; }
 .who .label { color: var(--muted-on-dark); }
-.who b { font-weight: 500; font-size: 14px; }
-.who button.link { color: #fff; opacity: 0.85; font-size: 13px; margin-left: 8px; }
+.who-row { display: flex; align-items: center; gap: 10px; margin: 0; }
+/* The switcher and the rename field sit on the dark hero: translucent white controls, white text */
+.who select, .who input[type='text'] {
+  color: #fff; background: rgba(255, 255, 255, 0.1); border-color: rgba(255, 255, 255, 0.28);
+  font-size: 14px; padding: 5px 8px; border-radius: var(--r-md); max-width: 150px;
+}
+.who select {
+  cursor: pointer; appearance: none; padding-right: 24px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23fff' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 9px center;
+}
+.who select option { color: var(--ink); background: var(--card); }
+.who input[type='text'] { width: 130px; }
+.who select:focus, .who input[type='text']:focus { border-color: #fff; box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.18); }
+.who button.link { color: #fff; opacity: 0.85; font-size: 13px; }
 .who button.link:hover:not(:disabled) { opacity: 1; }
 
 .body { padding: 14px 16px 16px; display: grid; gap: 10px; }

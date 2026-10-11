@@ -17,5 +17,11 @@ it('renders the popup and degrades without a content script', async () => {
   expect(el.textContent).toContain('Tailor pages automatically as they load')
   expect(el.textContent).toContain('Demo mode: play the changes top to bottom')
   expect(el.querySelector('.error')?.textContent).toContain('Tailor is not on this tab')
+  // Profile switcher: the active profile is offered even before it is stored, plus Rename and Open.
+  const select = el.querySelector<HTMLSelectElement>('select[aria-label="Active profile"]')
+  expect(select?.value).toBe('default')
+  expect(select?.textContent).toContain('Default')
+  expect(el.textContent).toContain('Rename')
+  expect(el.textContent).toContain('Open')
   await act(async () => root.unmount())
 })

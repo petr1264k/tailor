@@ -48,6 +48,19 @@ export const EditOutputSchema = z.object({
 })
 export type EditOutput = z.infer<typeof EditOutputSchema>
 
+/**
+ * Recommendations for a storefront page (src/tailor/recommend.ts): the cards to look at first, the cards to skip, the
+ * card that answers a question the person asked. Keyed to item ids; code checks every id and the fit of every fact.
+ */
+export const PicksOutputSchema = z.object({
+  picks: z
+    .array(z.object({ item: z.string(), need: z.string(), text: z.string(), factIds: z.array(z.string()) }))
+    .max(8),
+  skips: z.array(z.object({ item: z.string(), text: z.string(), factIds: z.array(z.string()) })).max(6),
+  answer: z.object({ item: z.string(), questionId: z.string(), text: z.string() }).nullable().optional(),
+})
+export type PicksOutput = z.infer<typeof PicksOutputSchema>
+
 /** What the Haiku "map" step proposes per chunk (§3.2). Code assigns ids, dates and origins; the model never does. */
 export const CandidateFactSchema = z.object({
   category: FactCategorySchema,

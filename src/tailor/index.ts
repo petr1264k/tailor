@@ -18,6 +18,7 @@ import { siteProfileFor } from '@/sites'
 import { selectRelevantFacts } from './relevance'
 import { rewritePage } from './rewrite'
 import { editsToBlocks, proposeEdits } from './edit'
+import { canRecommend, mergeRecommendations, recommend, MAX_BRIEF_FACTS, NO_RECOMMENDATIONS } from './recommend'
 import { cacheKey, getCachedTailoredPage, setCachedTailoredPage } from './cache'
 
 export { extractPageContent, extractPage, collectSegments, resolveSegment, segmentText } from './extract'
@@ -27,6 +28,21 @@ export { rewritePage, buildRewriteUserPrompt, checkBlocks, chooseLanguage, REWRI
 export type { RewriteOptions } from './rewrite'
 export { proposeEdits, buildEditUserPrompt, checkEdits, editsToBlocks, promptSegments, EDIT_SYSTEM } from './edit'
 export { getCachedTailoredPage, setCachedTailoredPage, cacheKey, stripHash } from './cache'
+export {
+  recommend,
+  canRecommend,
+  buildBrief,
+  candidatesOf,
+  checkPicks,
+  picksToEdits,
+  mergeRecommendations,
+  buildRecommendUserPrompt,
+  RECOMMEND_SYSTEM,
+  MAX_PICKS,
+  MAX_SKIPS,
+  MAX_BRIEF_FACTS,
+} from './recommend'
+export type { Brief, Candidate, CheckedPicks, Recommendations } from './recommend'
 
 /** Pages with fewer visible text elements than this get the panel fallback (blocks) instead of in-place edits. */
 export const MIN_SEGMENTS_FOR_EDITS = 3
@@ -90,8 +106,10 @@ export function userFactValues(facts: Fact[]): string[] {
 }
 
 /**
- * select → edit (or rewrite) → gate → cache. Returns a TailoredPage that has already passed the gate.
+ * select → edit (or rewrite) + recommend → merge → gate → cache. Returns a TailoredPage that has already passed the gate.
  * In-place edits (§3.7) when the page has text elements to edit; the block panel is the fallback for pages without.
+ * On a page with a map of cards (a storefront), the recommendation step (recommend.ts) runs next to the edit model and
+ * its picks, skips and answer take the cards; a failure there leaves the edit model's output as before.
  */
 export async function tailorPage(content: PageContent, profile: Profile, settings: Settings): Promise<TailoredPage> {
   // Extract from the agent version when offered; the gate still checks the VISIBLE page (§3.6).
@@ -112,16 +130,29 @@ export async function tailorPage(content: PageContent, profile: Profile, setting
 
   let page: TailoredPage
   if (segments.length >= MIN_SEGMENTS_FOR_EDITS) {
-    const proposed = await proposeEdits(working, facts, options)
+    // Recommendations draw on a wider fact list than the edit prompt, so a budget or a question is not crowded out by
+    // facts that merely share words with the page. Both model calls run at once; the picks win the cards they cover.
+    const briefFacts = await selectRelevantFacts(profile, working, MAX_BRIEF_FACTS)
+    const [proposed, recs] = await Promise.all([
+      proposeEdits(working, facts, options),
+      canRecommend(working, briefFacts) ? recommend(working, briefFacts, options) : Promise.resolve(NO_RECOMMENDATIONS),
+    ])
+    if (recs.candidates) {
+      console.info(
+        `[tailor] recommendations: ${recs.candidates} cards → ${recs.picks} picks, ${recs.skips} skips` +
+          `${recs.answered ? ', 1 question answered' : ''}; ${recs.rejected} model proposals rejected by code`,
+      )
+    }
+    const allFacts = [...new Map([...facts, ...briefFacts].map((f) => [f.id, f])).values()]
     // Fail closed: a gate error fails the run; ungated edits never reach the page.
     const regions = content.regions ?? []
     const gated = runEditGate({
-      edits: proposed,
+      edits: mergeRecommendations(proposed, recs.edits),
       segments,
       regions,
       neverHide: siteProfileFor(content.url).policy.neverHide,
       visibleText: content.visibleText,
-      userFactValues: userFactValues(facts),
+      userFactValues: userFactValues(allFacts),
     })
     page = {
       url: content.url,

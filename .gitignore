@@ -17,3 +17,7 @@ demo/pages/*.html
 !demo/pages/.gitkeep
 eval/out/
 demo/pages/*_files/
+
+# Raw chat exports and profiles built from them (personal data)
+profiles/source/
+profiles/processed/

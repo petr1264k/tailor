@@ -181,6 +181,11 @@ export interface OwnMessage {
   /** ISO 8601. */
   date: string
   text: string
+  /**
+   * What the text is. Absent or 'chat': a message the person typed. 'project': project instructions the person wrote.
+   * 'memory': a note the assistant keeps about the person (third person, the assistant's words). Claude export only.
+   */
+  kind?: 'chat' | 'project' | 'memory'
 }
 
 export interface ImportedConversation {

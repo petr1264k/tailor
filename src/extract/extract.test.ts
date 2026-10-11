@@ -3,7 +3,7 @@ import type { Fact, OwnMessage, Profile } from '@/types'
 
 vi.mock('@/llm/client', () => ({ completeJson: vi.fn() }))
 import { completeJson } from '@/llm/client'
-import { CandidateFactsOutputSchema, MergedFactsOutputSchema } from '@/schemas'
+import { CandidateFactsOutputSchema, MergedFactsOutputSchema, QuestionPatternsOutputSchema } from '@/schemas'
 import {
   chunkMessages,
   estimateTokens,
@@ -96,8 +96,8 @@ describe('proposeCandidates (map step)', () => {
     expect(call.role).toBe('extract')
     expect(call.schema).toBe(CandidateFactsOutputSchema)
     expect(call.user).toContain('[m1] (chatgpt, Best TV for PS5, 2026-08-03): Just got a PS5, which TV should I get?')
-    // No topic exclusions in the prompt: nothing about the person is held back at extraction.
-    expect(call.system).not.toMatch(/health|religion|politics|sexuality/i)
+    // Sensitive topics are never extracted (§3.3).
+    expect(call.system).toMatch(/NEVER propose a fact about[^\n]*health[^\n]*religion[^\n]*politics[^\n]*finances/)
   })
 })
 
@@ -130,8 +130,8 @@ describe('mergeCandidates (reduce step)', () => {
     ])
     const call = mockComplete.mock.calls[0][0]
     expect(call).toMatchObject({ role: 'merge', effort: 'medium', schema: MergedFactsOutputSchema })
-    // No topic exclusions in the merge prompt either.
-    expect(call.system).not.toMatch(/health|religion|politics|sexuality|exact location|finances/i)
+    // The merge drops sensitive topics too (§3.3).
+    expect(call.system).toMatch(/Never output facts about health, religion, politics, sexuality, exact location, detailed finances/)
     expect(call.user).toContain('[0] owns | owns a PS5 | "just got a PS5" | 2026-09-01 | claude')
   })
 
@@ -154,13 +154,71 @@ describe('mineQuestions', () => {
       msg('q8', '2026-08-01T00:00:00Z', 'const label = isOn ? "yes" : "no";\nconst y = flag ? a : b;'),
     ]
     const qs = await mineQuestions(messages)
-    expect(qs.map((q) => q.value)).toEqual(['will it work with my PS5??', 'how do I set up HDR on a Sony?', 'What is the capital of France?'])
+    // Asked in one conversation only, so not recurring: "What is the capital of France?".
+    expect(qs.map((q) => q.value)).toEqual(['will it work with my PS5??', 'how do I set up HDR on a Sony?'])
     const [ps5] = qs
     expect(ps5).toMatchObject({ category: 'question', source: 'chat', confidence: 0.6 })
-    expect(ps5.evidence.map((e) => e.date)).toEqual(['2026-09-01T00:00:00Z', '2026-06-01T00:00:00Z', '2026-03-01T00:00:00Z'])
+    // Asked in 3 conversations (confidence 0.6), but the 2026-03 wording repeats the 2026-09 one, so it is shown once.
+    expect(ps5.evidence.map((e) => e.date)).toEqual(['2026-09-01T00:00:00Z', '2026-06-01T00:00:00Z'])
     expect(ps5.evidence[1].quote).toBe('Will it work with my ps5 though?')
     expect(qs.some((q) => /poem/.test(q.value))).toBe(false) // requests to the assistant are not questions
     expect(qs.some((q) => /const/.test(q.value))).toBe(false) // pasted code is not a question
+  })
+
+  it('adds model-proposed question patterns whose quotes verify in two or more conversations', async () => {
+    mockComplete.mockResolvedValueOnce(
+      reply({
+        questions: [
+          {
+            value: 'how does it work?',
+            quotes: [
+              { messageId: 'm1', quote: 'explain how the winglet works' },
+              { messageId: 'm2', quote: 'How does it work?' },
+              { messageId: 'm3', quote: 'this quote is not in the message' }, // fabricated: dropped
+            ],
+          },
+          { value: 'is it vegan?', quotes: [{ messageId: 'm3', quote: 'is it vegan' }] }, // one message only: dropped
+        ],
+      }),
+    )
+    const qs = await mineQuestions([
+      msg('a', '2026-09-01T00:00:00Z', 'Please explain how the winglet works'),
+      msg('b', '2026-08-01T00:00:00Z', 'Batteries. How does it work?'),
+      msg('c', '2026-07-01T00:00:00Z', 'Pasta recipe, is it vegan'),
+    ])
+    expect(qs.map((q) => q.value)).toEqual(['how does it work?'])
+    expect(qs[0]).toMatchObject({ category: 'question', confidence: 0.4 })
+    expect(qs[0].evidence.map((e) => e.quote)).toEqual(['explain how the winglet works', 'How does it work?'])
+    expect(mockComplete.mock.calls[0][0]).toMatchObject({ role: 'extract', schema: QuestionPatternsOutputSchema })
+  })
+
+  it('falls back to code-mined questions when the pattern pass fails', async () => {
+    mockComplete.mockRejectedValueOnce(new Error('rate limited'))
+    const qs = await mineQuestions([
+      msg('a', '2026-09-01T00:00:00Z', 'Will it work with my PS5?'),
+      msg('b', '2026-08-01T00:00:00Z', 'Will it work with my PS5?'),
+    ])
+    expect(qs.map((q) => q.value)).toEqual(['Will it work with my PS5?'])
+  })
+
+  it('ignores a line repeated within one conversation, like re-sent drafts', async () => {
+    const qs = await mineQuestions([
+      msg('d1', '2026-09-11T00:00:00Z', 'Draft one. So is this a scientific discovery?'),
+      msg('d1', '2026-09-11T01:00:00Z', 'Draft two. So is this a scientific discovery?'),
+      msg('d1', '2026-09-12T00:00:00Z', 'Final. So is this a scientific discovery?'),
+    ])
+    expect(qs).toEqual([])
+  })
+
+  it('mines only messages the person typed, not project instructions or memory notes', async () => {
+    const qs = await mineQuestions([
+      msg('p1', '2026-03-01T00:00:00Z', 'What genre should the story be?', { kind: 'project' }),
+      msg('n1', '2026-03-01T00:00:00Z', 'Which TV does he own?', { kind: 'memory' }),
+      msg('p2', '2026-03-01T00:00:00Z', 'What genre should the story be?', { kind: 'project' }),
+      msg('c1', '2026-03-02T00:00:00Z', 'Will it work with my PS5?', { kind: 'chat' }),
+      msg('c2', '2026-03-03T00:00:00Z', 'Will it work with my PS5?'),
+    ])
+    expect(qs.map((q) => q.value)).toEqual(['Will it work with my PS5?'])
   })
 })
 
@@ -198,9 +256,11 @@ describe('extractFacts', () => {
 
   it('splits held-out questions from profile messages with `before`', async () => {
     mockComplete.mockResolvedValue(reply({ facts: [] }))
-    const r = await extractFacts(messages, { before: '2026-08-15' })
+    const asked = [...messages, msg('c4', '2026-09-05T00:00:00Z', 'Just got a PS5, which TV should I get?')]
+    const r = await extractFacts(asked, { before: '2026-08-15' })
     expect(r.stats.chunks).toBe(1) // c2 + c3 only
-    expect(r.questions.map((q) => q.value)).toEqual(['Just got a PS5, which TV should I get?']) // from c1 only (held out)
+    // From c1 + c4 only (held out); "Will it work with my PS5?" (c2, c3) is in the profile period.
+    expect(r.questions.map((q) => q.value)).toEqual(['Just got a PS5, which TV should I get?'])
   })
 })
 

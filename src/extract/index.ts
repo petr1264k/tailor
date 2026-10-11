@@ -10,12 +10,12 @@
  * Message text is never logged (§0). Prompts live in ./prompts.ts.
  */
 import type { Evidence, Fact, OwnMessage, Profile } from '@/types'
-import { CandidateFactsOutputSchema, MergedFactsOutputSchema, type CandidateFact } from '@/schemas'
+import { CandidateFactsOutputSchema, MergedFactsOutputSchema, QuestionPatternsOutputSchema, type CandidateFact } from '@/schemas'
 import type { HandlerMap } from '@/messages'
 import { completeJson } from '@/llm/client'
 import { getArchiveStats, getOwnMessages } from '@/archive'
 import { getProfile, saveProfile, withProfileLock } from '@/profile'
-import { MAP_SYSTEM, MERGE_SYSTEM } from './prompts'
+import { MAP_SYSTEM, MERGE_SYSTEM, QUESTIONS_SYSTEM } from './prompts'
 
 export interface ExtractOptions {
   /** Rough tokens per chunk (chars / 4). Default 6000. */
@@ -123,9 +123,15 @@ function weakPrior(confidence: number): Fact['prior'] {
 
 // ───────────────────────────── chunking ─────────────────────────────
 
-/** The prompt line for one message: "[id] (origin, title, date): text". */
+/** The prompt line for one message: "[id] (origin, title, date): text"; project and memory items say so after the origin. */
 function messageLine(m: OwnMessage, id: string): string {
-  return `[${id}] (${m.origin}, ${oneLine(m.title) || 'untitled'}, ${day(m.date)}): ${oneLine(m.text).slice(0, MAX_MESSAGE_CHARS)}`
+  const source = m.kind && m.kind !== 'chat' ? `${m.origin} ${m.kind}` : m.origin
+  return `[${id}] (${source}, ${oneLine(m.title) || 'untitled'}, ${day(m.date)}): ${oneLine(m.text).slice(0, MAX_MESSAGE_CHARS)}`
+}
+
+/** A message the person typed (not project instructions or an assistant's memory note). */
+function isChat(m: OwnMessage): boolean {
+  return !m.kind || m.kind === 'chat'
 }
 
 /** Rough tokens (chars / 4) of the message as it appears in the prompt. */
@@ -287,32 +293,107 @@ function questionSentences(text: string): string[] {
     )
 }
 
-/** Recurring questions, e.g. "will it work with my PS5?". Code-first (normalize + count), model optional. */
+/** How much of each message, and of all messages, the question-pattern pass reads (newest first). */
+const QUESTION_LINE_CHARS = 200
+const QUESTION_BUDGET_CHARS = 24_000
+const MAX_PATTERNS = 8
+
+/**
+ * Haiku pass: recurring KINDS of question ("how does it work?"), including ones phrased as requests. Code keeps a
+ * pattern only when its quotes verify in messages from at least two different conversations.
+ */
+async function proposeQuestionPatterns(chats: OwnMessage[]): Promise<Fact[]> {
+  if (chats.length < 2) return []
+  const byId = new Map<string, OwnMessage>()
+  const lines: string[] = []
+  let used = 0
+  for (const m of [...chats].sort((a, b) => b.date.localeCompare(a.date))) {
+    const id = `m${lines.length + 1}`
+    const line = `[${id}] (${oneLine(m.title) || 'untitled'}, ${day(m.date)}): ${oneLine(m.text).slice(0, QUESTION_LINE_CHARS)}`
+    if (used + line.length > QUESTION_BUDGET_CHARS) break
+    byId.set(id, m)
+    lines.push(line)
+    used += line.length
+  }
+  const { value } = await completeJson({
+    role: 'extract',
+    system: QUESTIONS_SYSTEM,
+    user: `Messages (newest first):\n<messages>\n${lines.join('\n')}\n</messages>`,
+    schema: QuestionPatternsOutputSchema,
+  })
+  const facts: Fact[] = []
+  for (const p of value.questions.slice(0, MAX_PATTERNS)) {
+    const used = new Set<string>()
+    const hits: { quote: string; message: OwnMessage }[] = []
+    for (const q of p.quotes) {
+      const message = byId.get(q.messageId)
+      if (!message || used.has(message.id)) continue
+      const exact = findVerbatim(message.text, q.quote)
+      if (!exact) continue // not in the cited message: fabricated or paraphrased
+      used.add(message.id)
+      hits.push({ quote: clip(exact, MAX_QUOTE_CHARS), message })
+    }
+    const conversations = new Set(hits.map((h) => h.message.conversationId)).size
+    if (conversations < 2) continue
+    hits.sort((a, b) => b.message.date.localeCompare(a.message.date))
+    const confidence = Math.min(1, conversations / 5)
+    facts.push({
+      id: crypto.randomUUID(),
+      category: 'question',
+      value: clip(p.value.trim(), MAX_QUOTE_CHARS),
+      confidence,
+      source: 'chat',
+      evidence: hits.slice(0, MAX_EVIDENCE).map(({ quote, message }) => ({ origin: message.origin, title: message.title, date: message.date, quote })),
+      prior: weakPrior(confidence),
+    })
+  }
+  return facts
+}
+
+/**
+ * Recurring questions, e.g. "will it work with my PS5?", from the messages the person typed. Two sources:
+ * - patterns from a Haiku pass (proposeQuestionPatterns), each quoted from at least two conversations;
+ * - code: normalize, cluster, count conversations. Only questions asked in at least two different conversations count:
+ *   one conversation repeating a line (drafts of a post, steps of one homework set) is not a recurring question.
+ * The model pass is optional: if it fails, the code questions still come back.
+ */
 export async function mineQuestions(messages: OwnMessage[]): Promise<Fact[]> {
-  const clusters = new Map<string, { messageIds: Set<string>; hits: { sentence: string; message: OwnMessage }[] }>()
+  const chats = messages.filter(isChat)
+  let patterns: Fact[] = []
+  try {
+    patterns = await proposeQuestionPatterns(chats)
+  } catch (e) {
+    console.warn('[tailor] extract: question-pattern pass failed; using code-mined questions only', e instanceof Error ? e.message : e)
+  }
+  return [...patterns, ...codeQuestions(chats)].slice(0, MAX_QUESTIONS)
+}
+
+function codeQuestions(messages: OwnMessage[]): Fact[] {
+  const clusters = new Map<string, { conversations: Set<string>; hits: { sentence: string; norm: string; message: OwnMessage }[] }>()
   for (const message of messages) {
     for (const sentence of questionSentences(message.text)) {
       const norm = normalizeText(sentence)
       if (!norm) continue
       const key = norm.split(' ').slice(0, 6).join(' ') // near-duplicates share the first 6 normalized words
       let c = clusters.get(key)
-      if (!c) clusters.set(key, (c = { messageIds: new Set(), hits: [] }))
-      if (c.messageIds.has(message.id)) continue // count a question once per message
-      c.messageIds.add(message.id)
-      c.hits.push({ sentence, message })
+      if (!c) clusters.set(key, (c = { conversations: new Set(), hits: [] }))
+      c.conversations.add(message.conversationId)
+      c.hits.push({ sentence, norm, message })
     }
   }
-  const ranked = [...clusters.values()]
+  const picked = [...clusters.values()]
+    .filter((c) => c.conversations.size >= 2)
     .map((c) => {
-      const hits = c.hits.sort((a, b) => b.message.date.localeCompare(a.message.date))
-      return { hits, count: hits.length, newest: hits[0].message.date }
+      // Newest first; the same sentence again (a re-sent draft) adds no evidence, so keep its newest copy only.
+      const seen = new Set<string>()
+      const hits = c.hits
+        .sort((a, b) => b.message.date.localeCompare(a.message.date))
+        .filter((h) => !seen.has(h.norm) && seen.add(h.norm))
+      return { hits, count: c.conversations.size, newest: hits[0].message.date }
     })
     .sort((a, b) => b.count - a.count || b.newest.localeCompare(a.newest))
-  // Keep everything asked at least twice; if that is fewer than 10, top up to 10 by count (then recency).
-  const repeated = ranked.filter((c) => c.count >= 2)
-  const picked = (repeated.length >= 10 ? repeated : ranked.slice(0, Math.max(10, repeated.length))).slice(0, MAX_QUESTIONS)
+    .slice(0, MAX_QUESTIONS)
 
-  // TODO(extract): optional Haiku pass to merge paraphrases that do not share their first 6 words.
   return picked.map(({ hits, count }) => {
     const confidence = Math.min(1, count / 5)
     return {

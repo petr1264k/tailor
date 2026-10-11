@@ -557,8 +557,8 @@ function changeItem(line: string): HTMLElement {
 }
 
 /**
- * The end-of-run report (§8.5, §9 "Numbers"): what changed for this person, the numbers code measured on this page
- * before and after, and the fact check. One sheet, one OK. Resolves when it closes (OK, Escape, backdrop).
+ * The end-of-run report (§8.5, §9 "Numbers"): what changed for this person and the numbers code measured on this page
+ * before and after. The fact check stays in the data (receipts, eval) but is not shown here. One sheet, one OK. Resolves when it closes (OK, Escape, backdrop).
  */
 export function renderReportSheet(ui: TailorUi, report: PageReport): Promise<void> {
   openSheets.get(ui.root)?.(false)
@@ -587,20 +587,6 @@ export function renderReportSheet(ui: TailorUi, report: PageReport): Promise<voi
       for (const line of report.changes) list.append(changeItem(line))
       sheet.append(el('p', 'sheet-label', 'What changed'), list)
     }
-    const gate = el('div', 'report-gate')
-    gate.append(document.createTextNode(`${report.gate.checked} ${report.gate.checked === 1 ? 'claim' : 'claims'} checked against this page · ${report.gate.stripped.length} stripped`))
-    if (report.gate.stripped.length) {
-      const items = el('ul')
-      for (const s of report.gate.stripped) {
-        const li = el('li')
-        li.append(el('span', 'claim', s.claim), document.createTextNode(` (${STRIP_REASONS[s.reason] ?? s.reason})`))
-        items.append(li)
-      }
-      gate.append(items)
-    }
-    sheet.append(el('p', 'sheet-label', 'Fact check'), gate)
-    if (report.card) sheet.append(el('p', 'sheet-meta', `Measured by code on this page, before and after, at the same scroll position · screen = ${report.card.viewportHeight} px`))
-
     const ok = el('button', 'primary', 'OK')
     ok.type = 'button'
     const actions = el('div', 'sheet-actions')

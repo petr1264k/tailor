@@ -244,9 +244,6 @@ export const PANEL_CSS = `
   .report-changes { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; font-size: 14px; line-height: 1.35; }
   .report-changes li { padding: 6px 10px; border: 1px solid var(--t-line-2); border-radius: 8px; overflow-wrap: anywhere; }
   .report-changes b { font-weight: 500; color: var(--t-indigo); }
-  .report-gate { margin: 0; font-size: 15px; }
-  .report-gate ul { margin: 8px 0 0; padding-left: 1.2em; font-size: 14px; }
-  .report-gate .claim { text-decoration: line-through; font-weight: 600; }
 `
 
 /**

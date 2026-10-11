@@ -596,7 +596,7 @@ describe('demo mode: the changes play top to bottom', () => {
     expect(document.querySelector('main')!.innerHTML).toBe(before)
   })
 
-  it('the report sheet lists the numbers, the changes and the fact check; OK closes it', async () => {
+  it('the report sheet lists the numbers and the changes, not the fact check; OK closes it', async () => {
     setup()
     const card = buildScorecard(
       page(edits()),
@@ -620,8 +620,9 @@ describe('demo mode: the changes play top to bottom', () => {
     const items = [...sheet.querySelectorAll('.report-changes li')]
     expect(items.map((li) => li.textContent)).toEqual(['Moved up: Must-Have Picks', 'Folded: Customer praise'])
     expect(items[0]!.querySelector('b')!.textContent).toBe('Moved up:')
-    expect(sheet.querySelector('.report-gate')!.textContent).toContain('14 claims checked against this page · 1 stripped')
-    expect(sheet.querySelector('.report-gate .claim')!.textContent).toBe('144 Hz')
+    expect(sheet.textContent).not.toContain('Fact check')
+    expect(sheet.textContent).not.toContain('claims checked')
+    expect(sheet.textContent).not.toContain('Measured by code')
     expect(ui!.root.querySelector<HTMLElement>('.bar')!.hidden).toBe(true) // nothing of ours stays on the page
     ui!.root.querySelector<HTMLButtonElement>('.sheet-actions .primary')!.click()
     await closed

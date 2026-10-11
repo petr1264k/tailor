@@ -32,9 +32,14 @@ const EASE_SLAP = 'cubic-bezier(.34,1.56,.64,1)'
 /** Durations (ms) at pace 1. */
 export const MOTION = {
   dim: 160,
-  typeMin: 320,
-  typeMax: 850,
-  typePerChar: 12,
+  /** Typing: slow enough to watch the words appear (a headline takes about a second and a half). */
+  typeMin: 600,
+  typeMax: 2800,
+  typePerChar: 30,
+  /** Backspacing the old text away before the new one types in: quick, a few tenths of a second. */
+  eraseMin: 200,
+  eraseMax: 450,
+  erasePerChar: 6,
   glowTail: 260,
   flip: 650,
   noteIn: 440,
@@ -155,29 +160,61 @@ export function glow(run: Run, el: Element, duration: number): Promise<() => voi
   )
 }
 
-/** How long typing `text` takes at pace 1: fast enough for a paragraph, slow enough to read a headline being written. */
+/** How long typing `text` takes at pace 1: slow enough to watch a headline being written, capped for a paragraph. */
 export const typeDuration = (text: string): number => Math.min(MOTION.typeMax, Math.max(MOTION.typeMin, text.length * MOTION.typePerChar))
+
+/** How long backspacing `text` away takes at pace 1. */
+export const eraseDuration = (text: string): number => Math.min(MOTION.eraseMax, Math.max(MOTION.eraseMin, text.length * MOTION.erasePerChar))
+
+/** The caret shown at the end of text being typed or erased, in the site's own font. Gone once the text is complete. */
+export const CARET = '|'
 
 const nextFrame = (): Promise<number> =>
   new Promise((resolve) => (typeof requestAnimationFrame === 'function' ? requestAnimationFrame(resolve) : setTimeout(() => resolve(performance.now()), 16)))
 
-/** Types `text` into a text node over `duration` pace-1 ms. Leaves the full text in place however it ends. */
+/**
+ * Types `text` into a text node over `duration` pace-1 ms, a caret at the end of what is typed so far. Leaves the full
+ * text (no caret) in place however it ends.
+ */
 export async function typewrite(run: Run, node: Text, text: string, duration: number): Promise<void> {
   const total = dur(run, duration)
   if (total <= 0 || text.length === 0) {
     node.data = text
     return
   }
-  node.data = ''
+  node.data = CARET
   const start = performance.now()
   for (;;) {
     const t = await nextFrame()
     if (run.cancelled) break
     const progress = Math.min(1, (t - start) / total)
-    node.data = text.slice(0, Math.ceil(progress * text.length))
     if (progress >= 1) break
+    node.data = text.slice(0, Math.ceil(progress * text.length)) + CARET
   }
   node.data = text
+}
+
+/**
+ * Backspaces `from` out of a text node over `duration` pace-1 ms (the caret eats the text from its end), so a rewrite
+ * reads as the old line being retyped, never as a swap. Sets the node to `from` at once, before the first frame, so
+ * the element never shows the new text early. Leaves the node empty however it ends.
+ */
+export async function erase(run: Run, node: Text, from: string, duration: number): Promise<void> {
+  node.data = from
+  const total = dur(run, duration)
+  if (total <= 0 || from.length === 0) {
+    node.data = ''
+    return
+  }
+  const start = performance.now()
+  for (;;) {
+    const t = await nextFrame()
+    if (run.cancelled) break
+    const progress = Math.min(1, (t - start) / total)
+    if (progress >= 1) break
+    node.data = from.slice(0, Math.floor((1 - progress) * from.length)) + CARET
+  }
+  node.data = ''
 }
 
 /** A sticky note pressed onto the page: fades in while it comes down from a little above, a size up, and settles. */
@@ -277,14 +314,29 @@ export function scrollWindowTo(run: Run, top: number): Promise<void> {
   })
 }
 
-/** Brings a change's element on screen: its top sits a bit above the middle, so the change happens where the eye is. */
-export function bringOnScreen(run: Run, el: Element | null): Promise<void> {
-  if (!el || !el.isConnected || onScreen(el)) return Promise.resolve()
-  const r = el.getBoundingClientRect()
-  if (r.width === 0 && r.height === 0) return Promise.resolve()
-  const vh = window.innerHeight || document.documentElement.clientHeight || 900
-  const offset = r.height > vh * 0.6 ? vh * 0.1 : vh * 0.28
-  return scrollWindowTo(run, window.scrollY + r.top - offset)
+/** Passes bringOnScreen makes at most: the first scroll, then re-aims after the page shifted under it. */
+const AIM_PASSES = 3
+
+/**
+ * Brings a change's element on screen: its top sits a bit above the middle, so the change happens where the eye is.
+ * The window goes only to the element itself, and checks that it got there: on a long storefront, sections lazy-load
+ * while the window travels and push the target further down, so a scroll aimed at where it WAS lands on some other
+ * section with the change playing off screen. After each scroll settles the element is measured again and the window
+ * re-aims, up to a few passes. A reader who took the wheel is never steered.
+ */
+export async function bringOnScreen(run: Run, el: Element | null): Promise<void> {
+  for (let pass = 0; pass < AIM_PASSES; pass++) {
+    if (run.cancelled || run.userScrolled || !el || !el.isConnected || onScreen(el)) return
+    const r = el.getBoundingClientRect()
+    if (r.width === 0 && r.height === 0) return
+    const vh = window.innerHeight || document.documentElement.clientHeight || 900
+    const offset = r.height > vh * 0.6 ? vh * 0.1 : vh * 0.28
+    const from = window.scrollY
+    await scrollWindowTo(run, from + r.top - offset)
+    if (run.pace === 0 || window.scrollY === from) return // nothing moved (pace 0, a page that cannot scroll, too close): no re-aim
+    await nextFrame()
+    await nextFrame() // what loaded during the scroll lays out before the element is measured again
+  }
 }
 
 /** Steps in document order: what is higher on the page plays first. Disconnected targets go last. */

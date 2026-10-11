@@ -9,7 +9,8 @@
  * <body>), pinned to a corner of the element's box, and follows the element through layout changes (see `placePin`).
  * Each change carries a "why" chip. Original ↔ Tailored puts every original node back: `off()` undoes exactly what
  * `on()` did. In demo mode the changes PLAY instead of landing at once (`playInPlace`): promotes fly to their new spot
- * first, then everything else top to bottom, each with its own motion (live.ts), the window following along.
+ * first, then everything else top to bottom, each with its own motion (live.ts: a rewrite is retyped,
+ * backspace then keys), the window going only to the element being changed and checking it got there.
  *
  * Everything we insert is a custom element (<tailor-note>, <tailor-badge>, <tailor-why>) with its own shadow root, so
  * our styles never reach the site and the site's rarely reach us. Text enters the DOM only via textContent /
@@ -27,7 +28,8 @@ import {
   bringOnScreen,
   byDocumentOrder,
   cancelRun,
-  dim,
+  erase,
+  eraseDuration,
   finishRun,
   flip,
   flipScope,
@@ -592,15 +594,19 @@ export function applyInPlace(page: TailoredPage, facts: Fact[], ui: TailorUi, ta
         element.replaceChildren(textNode, ...chips)
       },
       off: () => element.replaceChildren(...original),
-      // The old text goes quiet, then the new one types in under a soft glow; the why chips pop in at the end.
+      // The line is visibly retyped, never swapped: the old text is backspaced away, then the new one types in, a
+      // caret at the end, under a soft glow; the why chips pop in once the text is complete. `on` puts our text node
+      // in first; erase sets it to the old text before any frame paints, so the new text never shows early.
       play: async (run, on) => {
-        const undim = await dim(run, element)
-        if (run.cancelled) return undim()
+        const old = (element.textContent ?? '').replace(/\s+/g, ' ').trim()
         on()
+        if (run.cancelled) return
         const releases = chips.map((c) => hold(run, c, { opacity: 0 }))
-        undim()
-        const ms = typeDuration(edit.text)
-        await Promise.all([typewrite(run, textNode, edit.text, ms), glow(run, element, ms + MOTION.glowTail)])
+        const eraseMs = eraseDuration(old)
+        const typeMs = typeDuration(edit.text)
+        void glow(run, element, eraseMs + typeMs + MOTION.glowTail)
+        await erase(run, textNode, old, eraseMs)
+        await typewrite(run, textNode, edit.text, typeMs)
         for (const r of releases) r()
         await Promise.all(chips.map((c) => badgeIn(run, c)))
       },

@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Fact } from '@/types'
 import { resetDbForTests } from '@/archive'
 import { saveProfile, emptyProfile, getProfile } from '@/profile'
+import { getSettings } from '@/settings'
 import { App } from './App'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -68,6 +69,14 @@ describe('profile page', () => {
     for (const label of ['Profile', 'Import']) await click(label)
     expect(el.textContent).toContain('Archive')
     expect([...el.querySelectorAll('[role="tab"]')].map((t) => t.textContent)).not.toContain('Receipts')
+    // The auto-tailor switch lives in the top bar, on by default, and flips the setting.
+    const auto = el.querySelector<HTMLInputElement>('.topbar input[role="switch"]')!
+    expect(el.querySelector('.topbar .switch')?.textContent).toBe('Tailor pages automatically as they load')
+    expect(auto.checked).toBe(true)
+    await act(async () => auto.click())
+    await flush()
+    expect(auto.checked).toBe(false)
+    expect((await getSettings()).autoTailorOnLoad).toBe(false)
   })
 
   it('imports one ChatGPT file and shows per-source stats', async () => {

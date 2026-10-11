@@ -7,13 +7,15 @@
  *  - Receipts: what was shared with which site, when (SiteShare)
  * The extraction job (extractJob.ts) belongs to the page, not to the Import tab: it keeps running while another tab is
  * open, its status strip shows on the other tabs, and the page warns before unload while it runs.
- * The profile switcher sits in the top bar so the active profile (Mikhail / Petr) is visible on every tab.
+ * The top bar carries the "Tailor pages automatically as they load" switch (§3.5) and the profile switcher, so the
+ * active profile (Mikhail / Petr) is visible on every tab.
  * Runs in the extension origin: calls modules directly. Every call is wrapped (attempt); errors show inline.
  */
 import { useCallback, useEffect, useState } from 'react'
 import { getSettings, setSettings } from '@/settings'
 import { DEFAULT_PROFILE_ID, listProfiles } from '@/profile'
 import { Brand } from '../Brand'
+import { Switch } from '../Switch'
 import { attempt } from './helpers'
 import { createProfile } from './store'
 import { ImportTab } from './ImportTab'
@@ -37,6 +39,7 @@ export function App() {
   const [profileId, setProfileId] = useState<string | null>(null)
   const [profiles, setProfiles] = useState<ProfileEntry[]>([])
   const [switchError, setSwitchError] = useState<string | null>(null)
+  const [autoTailor, setAutoTailor] = useState(true)
   const job = useExtractJob()
   const ownRun = isOwnRun(job)
 
@@ -59,7 +62,10 @@ export function App() {
   }, [])
 
   useEffect(() => {
-    void attempt(getSettings).then((r) => setProfileId(r.ok ? r.value.activeProfileId : DEFAULT_PROFILE_ID))
+    void attempt(getSettings).then((r) => {
+      setProfileId(r.ok ? r.value.activeProfileId : DEFAULT_PROFILE_ID)
+      if (r.ok) setAutoTailor(r.value.autoTailorOnLoad)
+    })
     void refreshProfiles()
   }, [refreshProfiles])
 
@@ -68,6 +74,15 @@ export function App() {
     if (!r.ok) return setSwitchError(r.error)
     setSwitchError(null)
     setProfileId(id)
+  }
+
+  async function toggleAutoTailor(on: boolean) {
+    setAutoTailor(on)
+    const r = await attempt(() => setSettings({ autoTailorOnLoad: on }))
+    if (!r.ok) {
+      setAutoTailor(!on)
+      setSwitchError(r.error)
+    }
   }
 
   async function newProfile(name: string): Promise<boolean> {
@@ -93,9 +108,12 @@ export function App() {
               </button>
             ))}
           </nav>
-          {profileId && (
-            <ProfileSwitcher profiles={profiles} activeId={profileId} onSwitch={switchTo} onCreate={newProfile} />
-          )}
+          <div className="topbar-right">
+            <Switch label="Tailor pages automatically as they load" checked={autoTailor} onChange={(on) => void toggleAutoTailor(on)} />
+            {profileId && (
+              <ProfileSwitcher profiles={profiles} activeId={profileId} onSwitch={switchTo} onCreate={newProfile} />
+            )}
+          </div>
         </div>
       </header>
       <main className="page">

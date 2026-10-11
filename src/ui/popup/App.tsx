@@ -1,7 +1,7 @@
 /**
  * Popup (Owner: Petr). Key entry, active profile (switch, rename), "Tailor this page" / "Show original" / "Share with this site",
- * status with gate counts (§3.6), "Tailor pages automatically as they load" (§3.5, on by default), demo mode (§9, on by
- * default: the changes play top to bottom with motion). CONTEXT.txt §3.5–3.9, §4.
+ * status with gate counts (§3.6), "Animate" (§9 demo mode, on by default: the changes play top to bottom with motion).
+ * "Tailor pages automatically as they load" (§3.5) lives in the profile page top bar. CONTEXT.txt §3.5–3.9, §4.
  * Runs in the extension origin: reads settings and profiles directly; talks to the page via sendToTab.
  * Every call is wrapped; errors show inline. Look: coframe.com (src/ui/theme.css).
  */
@@ -12,6 +12,7 @@ import { listProfiles } from '@/profile'
 import { attempt } from '../profile/helpers'
 import { renameProfile } from '../profile/store'
 import { Brand } from '../Brand'
+import { Switch } from '../Switch'
 import { describeStatus } from './status'
 
 const NOT_RUNNING = 'Tailor is not on this tab. Switch to a normal web page (Chrome blocks every extension on chrome:// and the Web Store), or reload a page that was open before the extension loaded.'
@@ -43,7 +44,6 @@ export function App() {
   const [activeId, setActiveId] = useState('')
   const [renaming, setRenaming] = useState(false)
   const [newName, setNewName] = useState('')
-  const [autoTailor, setAutoTailor] = useState(true)
   const [demoMode, setDemoMode] = useState(true)
   const [status, setStatus] = useState<ContentStatus | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -55,7 +55,6 @@ export function App() {
       if (!s.ok) return setError(s.error)
       setKey(s.value.anthropicKey ?? '')
       setHasKey(!!s.value.anthropicKey)
-      setAutoTailor(s.value.autoTailorOnLoad)
       setDemoMode(s.value.demoMode)
       setActiveId(s.value.activeProfileId)
       const list = await attempt(listProfiles)
@@ -100,15 +99,6 @@ export function App() {
     if (s.ok) setKey(s.value.anthropicKey ?? '')
     setSaved(false)
     setEditingKey(false)
-  }
-
-  async function toggleAutoTailor(on: boolean) {
-    setAutoTailor(on)
-    const r = await attempt(() => setSettings({ autoTailorOnLoad: on }))
-    if (!r.ok) {
-      setAutoTailor(!on)
-      setError(r.error)
-    }
   }
 
   async function toggleDemoMode(on: boolean) {
@@ -248,14 +238,7 @@ export function App() {
 
         <div className="panel">
           <span className="label">Settings</span>
-          <label className="check">
-            <input type="checkbox" checked={autoTailor} onChange={(e) => void toggleAutoTailor(e.target.checked)} />
-            Tailor pages automatically as they load
-          </label>
-          <label className="check" title="The changes play one by one from the top of the page down, with motion, and the window follows. Off: they land at once.">
-            <input type="checkbox" checked={demoMode} onChange={(e) => void toggleDemoMode(e.target.checked)} />
-            Demo mode: play the changes top to bottom
-          </label>
+          <Switch label="Animate" checked={demoMode} onChange={(on) => void toggleDemoMode(on)} />
           {hasKey && !editingKey && (
             <div className="key-row">
               <span className="hint">Anthropic API key saved</span>

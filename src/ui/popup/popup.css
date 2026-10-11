@@ -36,7 +36,7 @@ button.big { padding: 13px 18px; font-size: 15.5px; border-radius: var(--r-xl); 
 .panel { background: var(--card); border: 1px solid var(--line-2); border-radius: var(--r-xl); padding: 12px 14px; display: grid; gap: 7px; box-shadow: var(--shadow-1); }
 .status-line { font-weight: 500; }
 .hint { color: var(--muted); font-size: 13px; }
-.check { display: flex; align-items: center; gap: 9px; font-size: 14px; }
+.panel .switch { justify-content: space-between; }
 .key-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .key-row button.link, button.key-cancel { font-size: 13px; }
 button.key-cancel { justify-self: start; }

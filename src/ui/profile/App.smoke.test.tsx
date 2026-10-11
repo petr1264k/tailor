@@ -41,6 +41,16 @@ async function click(label: string) {
   await flush()
 }
 
+/** Types into a React-controlled input: set the value through the native setter, then fire 'input'. */
+async function typeInto(selector: string, value: string) {
+  const input = el.querySelector(selector) as HTMLInputElement
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value)
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  await flush()
+}
+
 beforeEach(() => {
   indexedDB = new IDBFactory()
   resetDbForTests()
@@ -103,7 +113,15 @@ describe('profile page', () => {
     await mount()
     await click('Profile')
     expect(el.textContent).toContain('owns a PS5')
-    expect(el.textContent).toContain("ChatGPT, Aug 3: 'just got a PS5, which TV should I get?'")
+    const quote = el.querySelector('.q.own')?.textContent
+    expect(quote).toContain('✎ Your words')
+    expect(quote).toContain('ChatGPT · Aug 3, 2026')
+    expect(quote).toContain('just got a PS5, which TV should I get?')
+
+    await typeInto('input[type="search"]', 'zzz')
+    expect(el.textContent).toContain('No facts match these filters.')
+    await click('Show all facts')
+    expect(el.textContent).toContain('owns a PS5')
 
     await click('Delete')
     expect(el.querySelector('.fact.deleted')?.textContent).toContain('owns a PS5')

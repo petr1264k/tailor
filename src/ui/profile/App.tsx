@@ -102,7 +102,7 @@ export function App() {
         {tab !== 'import' && job.status !== 'idle' && <ExtractStrip job={job} onView={job.status === 'done' && job.profileId === profileId && tab !== 'profile' ? () => setTab('profile') : undefined} />}
         {/* key={profileId}: switching profiles remounts the tab so it reloads that profile's data */}
         {profileId && tab === 'import' && <ImportTab key={profileId} profileId={profileId} profileName={nameOf(profiles, profileId)} />}
-        {profileId && tab === 'profile' && <ProfileTab key={profileId} profileId={profileId} />}
+        {profileId && tab === 'profile' && <ProfileTab key={profileId} profileId={profileId} profileName={nameOf(profiles, profileId)} />}
         {profileId && tab === 'receipts' && <ReceiptsTab key={profileId} profileId={profileId} />}
       </main>
     </>

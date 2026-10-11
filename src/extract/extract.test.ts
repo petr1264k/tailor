@@ -249,6 +249,28 @@ describe('extractFacts', () => {
     expect(progress.at(-1)).toBe('questions:1/1')
   })
 
+  it('stops on abort: passes the signal to the model, makes no further calls, never merges, rejects with the reason', async () => {
+    const stop = new AbortController()
+    const signals: (AbortSignal | undefined)[] = []
+    mockComplete.mockImplementation(async (opts) => {
+      signals.push(opts.signal)
+      stop.abort(new DOMException('Extraction stopped', 'AbortError')) // the user presses Stop during the first call
+      throw opts.signal!.reason
+    })
+    await expect(extractFacts(messages, { chunkTokens: 20, signal: stop.signal })).rejects.toThrow('Extraction stopped')
+    // MAP_CONCURRENCY workers may each have started one call before the abort; none came after, and no merge ran.
+    expect(signals.every((s) => s === stop.signal)).toBe(true)
+    expect(mockComplete.mock.calls.every(([o]) => o.role === 'extract')).toBe(true)
+    expect(mockComplete.mock.calls.length).toBeLessThanOrEqual(3)
+  })
+
+  it('does not start at all with an already aborted signal', async () => {
+    const stop = new AbortController()
+    stop.abort(new DOMException('Extraction stopped', 'AbortError'))
+    await expect(extractFacts(messages, { signal: stop.signal })).rejects.toThrow('Extraction stopped')
+    expect(mockComplete).not.toHaveBeenCalled()
+  })
+
   it('throws when every chunk fails (e.g. no API key)', async () => {
     mockComplete.mockRejectedValue(new Error('No Anthropic API key'))
     await expect(extractFacts(messages)).rejects.toThrow('No Anthropic API key')

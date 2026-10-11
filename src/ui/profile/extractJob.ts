@@ -14,6 +14,7 @@
  * fetch takes more than 30 s to answer, which the Sonnet merge regularly does. Closing or reloading the page
  * therefore stops the run; the page warns before unload, and a run cut short shows as "interrupted" afterwards.
  * Facts are saved to the profile by runExtract as soon as the run completes (src/extract).
+ * stopExtract() cancels this page's run mid-flight (in-flight model calls included); a stopped run saves nothing.
  */
 import { runExtract } from '@/extract'
 
@@ -50,6 +51,7 @@ export type ExtractJob =
       version: number
     })
   | (JobBase & { status: 'error'; finishedAt: string; seconds: number; error: string })
+  | (JobBase & { status: 'stopped'; finishedAt: string; seconds: number; stage: ExtractStage; done: number; total: number })
   | (JobBase & { status: 'interrupted'; stage: ExtractStage; done: number; total: number; updatedAt: string })
 
 /** What chrome.storage.session holds: the job plus the page that wrote it, so a page can ignore its own echoes. */
@@ -75,6 +77,9 @@ const listeners = new Set<Listener>()
 /** vitest fallback for chrome.storage.session. */
 let memory: StoredJob | null = null
 let watching = false
+/** This page's run: its abort switch and its promise (stopExtract waits for it to settle). */
+let controller: AbortController | null = null
+let current: Promise<void> | null = null
 
 function hasSessionStorage(): boolean {
   return typeof chrome !== 'undefined' && !!chrome.storage?.session
@@ -144,12 +149,12 @@ export async function startExtract(profileId: string, profileName: string, now: 
   if (isOwnRun()) throw new Error(`Extraction into “${(state as RunningJob).profileName}” is already running on this page.`)
   const locks = lockManager()
   if (!locks) {
-    await runJob(profileId, profileName, now)
+    await (current = runJob(profileId, profileName, now))
     return state
   }
   const ran = await locks.request(EXTRACT_LOCK, { ifAvailable: true }, async (lock) => {
     if (!lock) return false
-    await runJob(profileId, profileName, now)
+    await (current = runJob(profileId, profileName, now))
     return true
   })
   if (!ran) throw new Error('An extraction is already running in another Tailor tab. Let it finish first.')
@@ -164,12 +169,17 @@ async function runJob(profileId: string, profileName: string, now: Clock): Promi
   const heartbeat = setInterval(() => {
     if (isOwnRun()) set({ ...(state as RunningJob), updatedAt: iso(now()) })
   }, HEARTBEAT_MS)
+  const abort = (controller = new AbortController())
 
   try {
-    const r = await runExtract(profileId, (done, total, stage) => {
-      if (!isOwnRun()) return
-      set({ ...(state as RunningJob), stage, done, total, updatedAt: iso(now()) })
-    })
+    const r = await runExtract(
+      profileId,
+      (done, total, stage) => {
+        if (!isOwnRun()) return
+        set({ ...(state as RunningJob), stage, done, total, updatedAt: iso(now()) })
+      },
+      abort.signal,
+    )
     const t1 = now()
     set({
       ...base,
@@ -184,10 +194,24 @@ async function runJob(profileId: string, profileName: string, now: Clock): Promi
     })
   } catch (e) {
     const t1 = now()
-    set({ ...base, status: 'error', finishedAt: iso(t1), seconds: Math.round((t1 - t0) / 1000), error: errorText(e) })
+    const seconds = Math.round((t1 - t0) / 1000)
+    if (abort.signal.aborted) {
+      const { stage, done, total } = state as RunningJob
+      set({ ...base, status: 'stopped', finishedAt: iso(t1), seconds, stage, done, total })
+    } else set({ ...base, status: 'error', finishedAt: iso(t1), seconds, error: errorText(e) })
   } finally {
     clearInterval(heartbeat)
+    controller = null
+    current = null
   }
+}
+
+/** Stops this page's run mid-flight and waits until it has settled as 'stopped'. A no-op when this page runs nothing. */
+export async function stopExtract(): Promise<void> {
+  if (!isOwnRun() || !controller) return
+  const settling = current
+  controller.abort(new DOMException('Extraction stopped', 'AbortError'))
+  await settling
 }
 
 /** Clears a finished, failed or interrupted job from view. A running job cannot be dismissed. */
@@ -286,6 +310,8 @@ export function describeExtractJob(job: ExtractJob, now: Clock = Date.now): stri
       )
     case 'error':
       return `Extraction into “${job.profileName}” failed after ${job.seconds} s: ${job.error}`
+    case 'stopped':
+      return `Stopped extraction into “${job.profileName}” after ${job.seconds} s, while ${stageLabel(job.stage, job.done, job.total, 'then')}. Nothing was saved.`
     case 'interrupted':
       return (
         `Extraction into “${job.profileName}” was interrupted while ${stageLabel(job.stage, job.done, job.total, 'then')} ` +
@@ -300,4 +326,6 @@ export function resetExtractJobForTests(persisted: { writer: string; job: Extrac
   listeners.clear()
   memory = persisted
   watching = false
+  controller = null
+  current = null
 }

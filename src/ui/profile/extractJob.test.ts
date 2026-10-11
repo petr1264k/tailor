@@ -15,6 +15,7 @@ import {
   resetExtractJobForTests,
   restoreExtractJob,
   startExtract,
+  stopExtract,
   subscribeExtractJob,
   syncExtractJob,
   type ExtractJob,
@@ -161,6 +162,33 @@ describe('startExtract (no chrome, no locks: vitest fallbacks)', () => {
     await expect(startExtract('mikhail', 'Mikhail', now)).rejects.toThrow('already running on this page')
     finish!()
     expect((await first).status).toBe('done')
+  })
+
+  it('stops mid-flight: aborts the run, settles as "stopped", saves nothing, and allows a new run', async () => {
+    let signal: AbortSignal | undefined
+    vi.mocked(runExtract).mockImplementationOnce(async (_id, onProgress, s) => {
+      signal = s
+      onProgress?.(2, 5, 'map')
+      t += 12_000
+      // Like the real pipeline: rejects with the abort reason once the signal fires.
+      await new Promise((_, reject) => s!.addEventListener('abort', () => reject(s!.reason)))
+      return ok()
+    })
+    const run = startExtract('petr', 'Petr', now)
+    await vi.waitFor(() => expect(signal).toBeDefined())
+    await stopExtract()
+    expect(signal!.aborted).toBe(true)
+    const final = await run
+    expect(final).toMatchObject({ status: 'stopped', stage: 'map', done: 2, total: 5, seconds: 12 })
+    expect(describeExtractJob(final)).toBe('Stopped extraction into “Petr” after 12 s, while Haiku was reading chunk 2 of 5. Nothing was saved.')
+    expect(isOwnRun()).toBe(false)
+    vi.mocked(runExtract).mockResolvedValueOnce(ok())
+    expect((await startExtract('petr', 'Petr', now)).status).toBe('done')
+  })
+
+  it('stop is a no-op when this page runs nothing', async () => {
+    await stopExtract()
+    expect(getExtractJob()).toEqual({ status: 'idle' })
   })
 
   it('dismiss clears a finished job but not a running one', async () => {

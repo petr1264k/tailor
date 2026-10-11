@@ -67,6 +67,8 @@ export interface CompleteJsonOptions<T> {
   maxTokens?: number
   /** Default 'low' for speed. Use 'medium' for the merge. */
   effort?: 'low' | 'medium' | 'high'
+  /** Cancels the request (and its retries); the call then rejects with the signal's reason. */
+  signal?: AbortSignal
 }
 
 export interface CompleteJsonResult<T> {
@@ -119,8 +121,11 @@ export async function completeJson<T>(opts: CompleteJsonOptions<T>): Promise<Com
       system: [{ type: 'text', text: opts.system, cache_control: { type: 'ephemeral' } }],
       messages: [{ role: 'user', content: opts.user }],
       output_config: { effort: opts.effort ?? 'low' },
-    })
+    }, { signal: opts.signal })
   } catch (e) {
+    // Stopped on purpose: not an API failure, so no error log and the caller sees the abort reason.
+    if (opts.signal?.aborted) throw opts.signal.reason
+
     // chrome://extensions keeps only the text of a console.error (objects show as "[object Object]"),
     // so log one line of text. The SDK message already starts with the HTTP status and the error body.
     const summary = describeApiError(e)

@@ -25,6 +25,8 @@ export interface ExtractOptions {
   /** Build the profile only from messages before this ISO date (held-out split, §8.1). Questions then come from the rest. */
   before?: string
   onProgress?: (done: number, total: number, stage: 'map' | 'reduce' | 'questions') => void
+  /** Stops the run: no new model calls, in-flight ones are cancelled, and extractFacts rejects with the abort reason. */
+  signal?: AbortSignal
 }
 
 /** A candidate with the message it cites, after code verified the quote. */
@@ -190,7 +192,7 @@ export function chunkMessages(messages: OwnMessage[], chunkTokens = DEFAULT_CHUN
 
 // ───────────────────────────── map (Haiku) ─────────────────────────────
 
-async function proposeAndVerify(chunk: OwnMessage[]): Promise<{ proposed: number; verified: VerifiedCandidate[] }> {
+async function proposeAndVerify(chunk: OwnMessage[], signal?: AbortSignal): Promise<{ proposed: number; verified: VerifiedCandidate[] }> {
   if (chunk.length === 0) return { proposed: 0, verified: [] }
   // Short local ids (m1, m2, ...): models copy them reliably; real ids are long UUIDs.
   const byId = new Map<string, OwnMessage>()
@@ -204,6 +206,7 @@ async function proposeAndVerify(chunk: OwnMessage[]): Promise<{ proposed: number
     system: MAP_SYSTEM,
     user: `Messages (newest conversation first):\n<messages>\n${lines.join('\n')}\n</messages>`,
     schema: CandidateFactsOutputSchema,
+    signal,
   })
   const verified: VerifiedCandidate[] = []
   for (const c of value.facts) {
@@ -237,7 +240,7 @@ function buildEvidence(cands: VerifiedCandidate[]): Evidence[] {
 }
 
 /** Sonnet reduce step over all candidates; returns Facts with evidence rebuilt by code. */
-export async function mergeCandidates(candidates: VerifiedCandidate[]): Promise<Fact[]> {
+export async function mergeCandidates(candidates: VerifiedCandidate[], signal?: AbortSignal): Promise<Fact[]> {
   if (candidates.length === 0) return []
   const list = [...candidates]
     .sort((a, b) => b.message.date.localeCompare(a.message.date))
@@ -252,6 +255,7 @@ export async function mergeCandidates(candidates: VerifiedCandidate[]): Promise<
     user: `Newest message date: ${day(list[0].message.date)}\nCandidates:\n<candidates>\n${lines.join('\n')}\n</candidates>`,
     schema: MergedFactsOutputSchema,
     maxTokens: 16000,
+    signal,
   })
   const facts: Fact[] = []
   for (const m of value.facts) {
@@ -302,7 +306,7 @@ const MAX_PATTERNS = 8
  * Haiku pass: recurring KINDS of question ("how does it work?"), including ones phrased as requests. Code keeps a
  * pattern only when its quotes verify in messages from at least two different conversations.
  */
-async function proposeQuestionPatterns(chats: OwnMessage[]): Promise<Fact[]> {
+async function proposeQuestionPatterns(chats: OwnMessage[], signal?: AbortSignal): Promise<Fact[]> {
   if (chats.length < 2) return []
   const byId = new Map<string, OwnMessage>()
   const lines: string[] = []
@@ -320,6 +324,7 @@ async function proposeQuestionPatterns(chats: OwnMessage[]): Promise<Fact[]> {
     system: QUESTIONS_SYSTEM,
     user: `Messages (newest first):\n<messages>\n${lines.join('\n')}\n</messages>`,
     schema: QuestionPatternsOutputSchema,
+    signal,
   })
   const facts: Fact[] = []
   for (const p of value.questions.slice(0, MAX_PATTERNS)) {
@@ -357,12 +362,13 @@ async function proposeQuestionPatterns(chats: OwnMessage[]): Promise<Fact[]> {
  *   one conversation repeating a line (drafts of a post, steps of one homework set) is not a recurring question.
  * The model pass is optional: if it fails, the code questions still come back.
  */
-export async function mineQuestions(messages: OwnMessage[]): Promise<Fact[]> {
+export async function mineQuestions(messages: OwnMessage[], signal?: AbortSignal): Promise<Fact[]> {
   const chats = messages.filter(isChat)
   let patterns: Fact[] = []
   try {
-    patterns = await proposeQuestionPatterns(chats)
+    patterns = await proposeQuestionPatterns(chats, signal)
   } catch (e) {
+    if (signal?.aborted) throw e
     console.warn('[tailor] extract: question-pattern pass failed; using code-mined questions only', e instanceof Error ? e.message : e)
   }
   return [...patterns, ...codeQuestions(chats)].slice(0, MAX_QUESTIONS)
@@ -415,11 +421,27 @@ function codeQuestions(messages: OwnMessage[]): Fact[] {
 
 // ───────────────────────────── pipeline ─────────────────────────────
 
+/** setTimeout as a promise that an aborted signal cuts short (rejects with the abort reason). */
+function pause(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const stop = () => {
+      clearTimeout(timer)
+      reject(signal!.reason)
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', stop)
+      resolve()
+    }, ms)
+    signal?.addEventListener('abort', stop, { once: true })
+  })
+}
+
 export async function extractFacts(
   messages: OwnMessage[],
   options: ExtractOptions = {},
 ): Promise<{ facts: Fact[]; questions: Fact[]; stats: { chunks: number; candidates: number; verified: number } }> {
-  const { chunkTokens = DEFAULT_CHUNK_TOKENS, maxChunks = DEFAULT_MAX_CHUNKS, before, onProgress } = options
+  const { chunkTokens = DEFAULT_CHUNK_TOKENS, maxChunks = DEFAULT_MAX_CHUNKS, before, onProgress, signal } = options
+  signal?.throwIfAborted()
   const pool = before ? messages.filter((m) => m.date < before) : messages
   const chunks = chunkMessages(pool, chunkTokens).slice(0, maxChunks) // newest first, so the cap drops the oldest
 
@@ -432,13 +454,14 @@ export async function extractFacts(
   let next = 0
   const rateLimited: typeof chunks = []
   const worker = async () => {
-    while (next < chunks.length) {
+    while (next < chunks.length && !signal?.aborted) {
       const chunk = chunks[next++]!
       try {
-        const r = await proposeAndVerify(chunk)
+        const r = await proposeAndVerify(chunk, signal)
         proposed += r.proposed
         verified.push(...r.verified)
       } catch (e) {
+        if (signal?.aborted) return
         // A rate-limited chunk is not lost: it is retried once, serially, after the burst (below).
         if (isRateLimit(e)) rateLimited.push(chunk)
         else errors.push(e)
@@ -447,15 +470,18 @@ export async function extractFacts(
     }
   }
   await Promise.all(Array.from({ length: Math.min(MAP_CONCURRENCY, chunks.length) }, worker))
+  signal?.throwIfAborted()
   if (rateLimited.length) {
     console.warn(`[tailor] extract: ${rateLimited.length}/${chunks.length} chunks were rate limited; retrying them one at a time after ${RATE_LIMIT_PAUSE_MS} ms`)
-    await new Promise((r) => setTimeout(r, RATE_LIMIT_PAUSE_MS))
+    await pause(RATE_LIMIT_PAUSE_MS, signal)
     for (const chunk of rateLimited) {
+      signal?.throwIfAborted()
       try {
-        const r = await proposeAndVerify(chunk)
+        const r = await proposeAndVerify(chunk, signal)
         proposed += r.proposed
         verified.push(...r.verified)
       } catch (e) {
+        signal?.throwIfAborted()
         errors.push(e)
       }
     }
@@ -467,13 +493,15 @@ export async function extractFacts(
     console.warn(`[tailor] extract: ${errors.length}/${chunks.length} chunks failed and were skipped. First error: ${why}`)
   }
 
+  signal?.throwIfAborted()
   onProgress?.(0, 1, 'reduce')
-  const facts = await mergeCandidates(verified)
+  const facts = await mergeCandidates(verified, signal)
   onProgress?.(1, 1, 'reduce')
 
   // Held-out split (§8.1): profile from older chats, questions from newer ones.
+  signal?.throwIfAborted()
   onProgress?.(0, 1, 'questions')
-  const questions = await mineQuestions(before ? messages.filter((m) => m.date >= before) : pool)
+  const questions = await mineQuestions(before ? messages.filter((m) => m.date >= before) : pool, signal)
   onProgress?.(1, 1, 'questions')
 
   return { facts, questions, stats: { chunks: chunks.length, candidates: proposed, verified: verified.length } }
@@ -521,10 +549,12 @@ export interface ExtractRunResult {
  * The whole run: own messages → extractFacts → merge into the stored profile → save.
  * The profile page calls this directly (extension origin) to show progress; 'extract/run' wraps it.
  * The long model work runs outside the profile lock; only the read-merge-save is serialized.
+ * An aborted `signal` (Stop on the Import tab) rejects before the save: a stopped run changes nothing.
  */
-export async function runExtract(profileId?: string, onProgress?: ExtractOptions['onProgress']): Promise<ExtractRunResult> {
+export async function runExtract(profileId?: string, onProgress?: ExtractOptions['onProgress'], signal?: AbortSignal): Promise<ExtractRunResult> {
   const messages = await getOwnMessages()
-  const { facts, questions, stats } = await extractFacts(messages, { onProgress })
+  const { facts, questions, stats } = await extractFacts(messages, { onProgress, signal })
+  signal?.throwIfAborted()
   const profile = await withProfileLock(async () => {
     const current = await getProfile(profileId)
     const { conversations, messages: count, from, to } = await getArchiveStats()

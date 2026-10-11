@@ -23,10 +23,10 @@
  *                                  Then runEditGate, as before.
  * Nothing here changes the renderer, the gate or the frozen types.
  */
-import type { Fact, FactCategory, PageContent, PageEdit, PageItem, RegionRole } from '@/types'
+import type { Fact, FactCategory, PageContent, PageEdit, PageItem, PageRegion, RegionRole } from '@/types'
 import { PicksOutputSchema, type PicksOutput } from '@/schemas'
 import { completeJson } from '@/llm/client'
-import { siteProfileFor } from '@/sites'
+import { regionOf, siteProfileFor } from '@/sites'
 import { claimKey, findClaims, matchForm } from '@/gate/claims'
 import { matchesUserFact } from '@/gate'
 import { normalizeForMatch } from '@/gate/normalize'
@@ -37,7 +37,7 @@ import { chooseLanguage, type RewriteOptions } from './rewrite'
 export const MAX_PICKS = 3
 export const MAX_SKIPS = 2
 /** Facts the brief may draw on: wider than the edit prompt's list, so a question or a budget is not crowded out. */
-export const MAX_BRIEF_FACTS = 14
+export const MAX_BRIEF_FACTS = 18
 /** A page needs this many recommendable cards before the step runs at all. */
 export const MIN_CANDIDATES = 3
 export const MAX_CANDIDATES = 60
@@ -367,18 +367,22 @@ const anchorOf = (e: PageEdit): string | null => (e.op === 'note' || e.op === 'w
 
 /**
  * The picks win the cards they cover: the edit model's note / warn / badge / promote on those cards are dropped, and
- * when the picks promote anything, the edit model's own promotes go too (one structure, the recommended one). Its
- * rewrites, hides, and its notes, warns and badges on OTHER cards and elements stay (edit.ts rule 5: a note on every
- * card that fits), under the same MAX_NOTES cap, picks first. Without picks, the edit model's output stands as before.
+ * in every shelf the picks reorder, the edit model's own promotes go too (one structure per list, the recommended
+ * one). Its promotes in OTHER shelves stay (edit.ts rule 5a: the 2-4 best fits move to the front of every list that
+ * has one), so the whole page moves, not just the shelf the picks landed in. Without a page map there is no telling
+ * shelves apart, so any pick promote drops them all. Its rewrites, hides, and its notes, warns and badges on OTHER
+ * cards and elements stay (rule 5: a note on every card that fits), under the same MAX_NOTES cap, picks first.
+ * Without picks, the edit model's output stands as before.
  */
-export function mergeRecommendations(edits: PageEdit[], recommended: PageEdit[]): PageEdit[] {
+export function mergeRecommendations(edits: PageEdit[], recommended: PageEdit[], regions: PageRegion[] = []): PageEdit[] {
   if (recommended.length === 0) return edits
   const covered = new Set(recommended.map(anchorOf).filter((id): id is string => id !== null))
-  const ownStructure = recommended.some((e) => e.op === 'promote')
+  const shelfOf = (id: string): string => regionOf(id, regions)?.id ?? '*'
+  const pickShelves = new Set(recommended.flatMap((e) => (e.op === 'promote' ? [shelfOf(e.id)] : [])))
   const out: PageEdit[] = [...recommended]
   let notes = recommended.filter((e) => e.op === 'note').length
   for (const e of edits) {
-    if (e.op === 'promote' && ownStructure) continue
+    if (e.op === 'promote' && (pickShelves.has('*') || pickShelves.has(shelfOf(e.id)))) continue
     const anchor = anchorOf(e)
     if (anchor && covered.has(anchor)) continue
     if (e.op === 'note' && ++notes > MAX_NOTES) continue

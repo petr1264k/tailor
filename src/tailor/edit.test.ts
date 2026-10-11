@@ -57,22 +57,22 @@ describe('buildEditUserPrompt', () => {
 })
 
 describe('checkEdits', () => {
-  it('drops notes without a known fact, filters fact ids, and caps notes at 18 and warns at 4', () => {
+  it('drops notes without a known fact, filters fact ids, and caps notes at 24 and warns at 6', () => {
     const note = (i: number): PageEdit => ({ op: 'note', after: 's1', text: `n${i}`, factIds: ['f-ps5', 'nope'] })
     const warn = (i: number): PageEdit => ({ op: 'warn', after: 's1', text: `w${i}`, factIds: ['f-ps5'] })
     const out = checkEdits(
       [
         { op: 'note', after: 's1', text: 'unbacked', factIds: ['nope'] },
-        ...Array.from({ length: 20 }, (_, i) => note(i + 1)),
-        ...[1, 2, 3, 4, 5, 6].map(warn),
+        ...Array.from({ length: 26 }, (_, i) => note(i + 1)),
+        ...[1, 2, 3, 4, 5, 6, 7, 8].map(warn),
         { op: 'rewrite', id: 's2', text: 'Short.', factIds: ['nope', 'f-simple'] },
         { op: 'rewrite', id: 's1', text: 'Plain.', factIds: ['nope'] },
         { op: 'hide', ids: ['s3'], label: 'Praise', reason: 'filler' },
       ],
       facts,
     )
-    expect(out.filter((e) => e.op === 'note')).toHaveLength(18)
-    expect(out.filter((e) => e.op === 'warn')).toHaveLength(4)
+    expect(out.filter((e) => e.op === 'note')).toHaveLength(24)
+    expect(out.filter((e) => e.op === 'warn')).toHaveLength(6)
     expect(out.find((e) => e.op === 'note')).toEqual({ op: 'note', after: 's1', text: 'n1', factIds: ['f-ps5'] })
     expect(out.find((e) => e.op === 'rewrite' && e.id === 's2')).toEqual({ op: 'rewrite', id: 's2', text: 'Short.', factIds: ['f-simple'] })
     expect(out.find((e) => e.op === 'rewrite' && e.id === 's1')).toEqual({ op: 'rewrite', id: 's1', text: 'Plain.' })
@@ -165,13 +165,13 @@ describe('page map: prompt, checkEdits caps, editsToBlocks', () => {
       { op: 'promote', id: 'i1', reason: 'no evidence', factIds: ['f-nope'] },
       { op: 'hide', ids: ['r1', 's3', 'i2', 'i3', 'i3'], label: 'Mixed', reason: 'x' },
       { op: 'hide', ids: ['r1', 's3'], label: 'Only sections', reason: 'x' },
-      ...Array.from({ length: 8 }, (_, i) => ({ op: 'badge' as const, id: `i${i + 1}`, label: `b${i}`, factIds: ['f-ps5'] })),
+      ...Array.from({ length: 12 }, (_, i) => ({ op: 'badge' as const, id: `i${i + 1}`, label: `b${i}`, factIds: ['f-ps5'] })),
       { op: 'badge', id: 'i9', label: 'no evidence', factIds: [] },
     ]
     const out = checkEdits(many, facts)
     expect(out.filter((e) => e.op === 'promote')).toEqual([{ op: 'promote', id: 'i2', reason: 'first', factIds: ['f-ps5'] }])
     expect(out.filter((e) => e.op === 'hide')).toEqual([{ op: 'hide', ids: ['i3'], label: 'Mixed', reason: 'x' }])
-    expect(out.filter((e) => e.op === 'badge')).toHaveLength(6)
+    expect(out.filter((e) => e.op === 'badge')).toHaveLength(10)
   })
 
   it('editsToBlocks turns promotes and badges into for_you blocks named after the region or card', () => {

@@ -1,9 +1,10 @@
 /**
  * Fidelity gate for in-place edits (CONTEXT.txt §3.6, §3.7). CODE ONLY, no model. Same rules as the block gate:
  * every number, price, spec, model name and quoted claim in an edit must appear on the VISIBLE page; what does not
- * is stripped (sentence by sentence) and counted. Only edits labeled as the user's (note, warn, promote, badge: they
- * carry factIds and render with a "why" chip) may pass a claim because it matches one of the user's facts. Rewrites
- * replace the site's own words, so every claim in them must be the page's.
+ * is stripped (sentence by sentence) and counted. Only edits labeled as the user's (note, warn, promote, badge, and a
+ * rewrite that cites factIds: they carry factIds and render with a "why" chip) may pass a claim because it matches
+ * one of the user's facts. A rewrite without factIds replaces the site's own words unlabeled, so every claim in it
+ * must be the page's.
  *
  * Also code-decided here: unknown segment / region / item ids (the model proposes, code checks), rewrites that change
  * nothing, rewrites that balloon past the original, hides of nothing, hides of regions the site policy protects
@@ -62,8 +63,11 @@ export const EDIT_BLOCK_TYPE: Record<PageEdit['op'], BlockType> = {
   badge: 'for_you',
 }
 
-/** Edits whose text is labeled as the user's (they carry factIds and render with a "why" chip). */
+/** Edits whose text is always labeled as the user's (they carry factIds and render with a "why" chip). */
 const USER_FACT_OPS: ReadonlySet<PageEdit['op']> = new Set<PageEdit['op']>(['note', 'warn', 'promote', 'badge'])
+
+/** True when the edit renders with a "why" chip: its text is labeled as drawn from the user's facts. */
+const labeledAsUsers = (edit: PageEdit): boolean => USER_FACT_OPS.has(edit.op) || (edit.op === 'rewrite' && (edit.factIds?.length ?? 0) > 0)
 
 function textsOf(edit: PageEdit): string[] {
   switch (edit.op) {
@@ -203,8 +207,9 @@ export function runEditGate(input: EditGateInput): EditGateOutput {
     const claims = claimsOf(edit)
     checked += claims.length
     const bad = new Set<string>()
+    const labeled = labeledAsUsers(edit)
     for (const claim of claims) {
-      if (USER_FACT_OPS.has(edit.op) && matchesUserFact(claim, facts)) continue
+      if (labeled && matchesUserFact(claim, facts)) continue
       if (claimOnPage(claim, page, [])) continue
       bad.add(claimKey(claim))
       stripped.push({ blockIndex, blockType: EDIT_BLOCK_TYPE[edit.op], claim: claim.text, reason: 'not_on_page' })

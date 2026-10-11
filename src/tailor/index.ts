@@ -17,7 +17,7 @@ import { runEditGate, runFidelityGate } from '@/gate'
 import { siteProfileFor } from '@/sites'
 import { selectRelevantFacts } from './relevance'
 import { rewritePage } from './rewrite'
-import { editsToBlocks, proposeEdits } from './edit'
+import { editsToBlocks, proposeEdits, MAX_EDIT_FACTS } from './edit'
 import { canRecommend, mergeRecommendations, recommend, MAX_BRIEF_FACTS, NO_RECOMMENDATIONS } from './recommend'
 import { cacheKey, getCachedTailoredPage, setCachedTailoredPage } from './cache'
 
@@ -26,7 +26,7 @@ export type { ExtractedPage, SegmentedPage } from './extract'
 export { selectRelevantFacts, scoreFact, tokenize, expandPageTokens } from './relevance'
 export { rewritePage, buildRewriteUserPrompt, checkBlocks, chooseLanguage, REWRITE_SYSTEM, LAYOUT_HINTS } from './rewrite'
 export type { RewriteOptions } from './rewrite'
-export { proposeEdits, buildEditUserPrompt, checkEdits, editsToBlocks, promptSegments, EDIT_SYSTEM } from './edit'
+export { proposeEdits, buildEditUserPrompt, checkEdits, editsToBlocks, promptSegments, EDIT_SYSTEM, MAX_EDIT_FACTS, MAX_NOTES, MAX_PROMOTES } from './edit'
 export { getCachedTailoredPage, setCachedTailoredPage, cacheKey, stripHash } from './cache'
 export {
   recommend,
@@ -120,7 +120,7 @@ export async function tailorPage(content: PageContent, profile: Profile, setting
     if (md) working = { ...content, text: md, source: 'agent-markdown' }
   }
 
-  const facts = await selectRelevantFacts(profile, working)
+  const facts = await selectRelevantFacts(profile, working, MAX_EDIT_FACTS)
   // Learned layout (§3.8). Greedy (posterior mean > 0.5), not a Thompson draw: the same profile always gets the same
   // layout, so the demo's "next product shows specs first" is deterministic. learn.sampleLayout is the exploring option.
   const layout = bestLayout(profile)
@@ -147,7 +147,7 @@ export async function tailorPage(content: PageContent, profile: Profile, setting
     // Fail closed: a gate error fails the run; ungated edits never reach the page.
     const regions = content.regions ?? []
     const gated = runEditGate({
-      edits: mergeRecommendations(proposed, recs.edits),
+      edits: mergeRecommendations(proposed, recs.edits, regions),
       segments,
       regions,
       neverHide: siteProfileFor(content.url).policy.neverHide,

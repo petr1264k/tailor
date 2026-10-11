@@ -23,13 +23,14 @@ describe('runEditGate', () => {
     expect(out.gate.checked).toBeGreaterThanOrEqual(4)
   })
 
-  it('a user fact passes in a note or warning but not in a rewrite', () => {
+  it('a user fact passes in a note, a warning or a rewrite that cites facts, but not in an unlabeled rewrite', () => {
     const out = gate([
       { op: 'warn', after: 's2', text: 'At $1,299.99 this is over your $800 budget.', factIds: ['f-budget'] },
       { op: 'rewrite', id: 's2', text: 'Within an $800 budget this has four HDMI 2.1 ports.' },
+      { op: 'rewrite', id: 's1', text: 'Samsung 65" QN90D Neo QLED, for your PS5', factIds: ['f-ps5'] },
     ])
-    expect(out.edits).toHaveLength(1)
-    expect(out.edits[0]!.op).toBe('warn')
+    expect(out.edits.map((e) => e.op)).toEqual(['warn', 'rewrite'])
+    expect(out.edits[1]).toEqual({ op: 'rewrite', id: 's1', text: 'Samsung 65" QN90D Neo QLED, for your PS5', factIds: ['f-ps5'] })
     expect(out.gate.stripped).toEqual([{ blockIndex: 1, blockType: 'section', claim: '$800', reason: 'not_on_page' }])
   })
 

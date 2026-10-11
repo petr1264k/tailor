@@ -228,6 +228,24 @@ describe('picksToEdits / mergeRecommendations', () => {
     expect(merged.slice(picks.length)).toEqual([model[0], model[1], model[3], model[6]])
     expect(mergeRecommendations(model, [])).toBe(model)
   })
+  it('with a page map, drops the edit model’s promotes only in the shelves the picks reorder, so every other list still moves', () => {
+    const regions: PageRegion[] = [
+      { id: 'r1', role: 'products', title: 'Must-Have', segmentIds: [], items: [{ id: 'i1', title: 'A', segmentIds: [] }, { id: 'i2', title: 'B', segmentIds: [] }, { id: 'i5', title: 'E', segmentIds: [] }] },
+      { id: 'r2', role: 'categories', title: 'By category', segmentIds: [], items: [{ id: 'i7', title: 'G', segmentIds: [] }, { id: 'i8', title: 'H', segmentIds: [] }] },
+    ]
+    const model: PageEdit[] = [
+      { op: 'promote', id: 'i5', reason: 'fits', factIds: ['f-mac'] }, // the picks' shelf: theirs is the one order
+      { op: 'promote', id: 'i7', reason: 'fits', factIds: ['f-mac'] }, // another shelf: the edit model's move stays
+      { op: 'promote', id: 'i8', reason: 'fits', factIds: ['f-mac'] },
+      { op: 'note', after: 'i7', text: 'Hubs: for your desk', factIds: ['f-mac'] },
+    ]
+    const picks = picksToEdits(checked)
+    const merged = mergeRecommendations(model, picks, regions)
+    expect(merged.slice(0, picks.length)).toEqual(picks)
+    expect(merged.slice(picks.length)).toEqual([model[1], model[2], model[3]])
+    // No map: shelves cannot be told apart, so the picks' structure is the only one (as before).
+    expect(mergeRecommendations(model, picks).filter((e) => e.op === 'promote')).toEqual(picks.filter((e) => e.op === 'promote'))
+  })
 })
 
 describe('recommend', () => {

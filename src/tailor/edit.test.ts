@@ -57,13 +57,13 @@ describe('buildEditUserPrompt', () => {
 })
 
 describe('checkEdits', () => {
-  it('drops notes without a known fact, filters fact ids, and caps notes at 14 and warns at 4', () => {
+  it('drops notes without a known fact, filters fact ids, and caps notes at 18 and warns at 4', () => {
     const note = (i: number): PageEdit => ({ op: 'note', after: 's1', text: `n${i}`, factIds: ['f-ps5', 'nope'] })
     const warn = (i: number): PageEdit => ({ op: 'warn', after: 's1', text: `w${i}`, factIds: ['f-ps5'] })
     const out = checkEdits(
       [
         { op: 'note', after: 's1', text: 'unbacked', factIds: ['nope'] },
-        ...Array.from({ length: 16 }, (_, i) => note(i + 1)),
+        ...Array.from({ length: 20 }, (_, i) => note(i + 1)),
         ...[1, 2, 3, 4, 5, 6].map(warn),
         { op: 'rewrite', id: 's2', text: 'Short.', factIds: ['nope', 'f-simple'] },
         { op: 'rewrite', id: 's1', text: 'Plain.', factIds: ['nope'] },
@@ -71,12 +71,29 @@ describe('checkEdits', () => {
       ],
       facts,
     )
-    expect(out.filter((e) => e.op === 'note')).toHaveLength(14)
+    expect(out.filter((e) => e.op === 'note')).toHaveLength(18)
     expect(out.filter((e) => e.op === 'warn')).toHaveLength(4)
     expect(out.find((e) => e.op === 'note')).toEqual({ op: 'note', after: 's1', text: 'n1', factIds: ['f-ps5'] })
     expect(out.find((e) => e.op === 'rewrite' && e.id === 's2')).toEqual({ op: 'rewrite', id: 's2', text: 'Short.', factIds: ['f-simple'] })
     expect(out.find((e) => e.op === 'rewrite' && e.id === 's1')).toEqual({ op: 'rewrite', id: 's1', text: 'Plain.' })
     expect(out.at(-1)).toEqual({ op: 'hide', ids: ['s3'], label: 'Praise', reason: 'filler' })
+  })
+
+  it('drops notes, warns, badges and promote reasons that dismiss the page as not for this person (rule 5b)', () => {
+    const out = checkEdits(
+      [
+        { op: 'note', after: 's1', text: "The rest of this page is about outdoor gear, which doesn't tie to your current work.", factIds: ['f-ps5'] },
+        { op: 'note', after: 's1', text: 'Not for you: no PS5 here.', factIds: ['f-ps5'] },
+        { op: 'warn', after: 's1', text: 'This section is unrelated to your setup.', factIds: ['f-ps5'] },
+        { op: 'badge', id: 's1', label: 'Skip this', factIds: ['f-ps5'] },
+        { op: 'promote', id: 's1', reason: 'The rest of the page is irrelevant to you', factIds: ['f-ps5'] },
+        { op: 'note', after: 's1', text: '120 Hz: matches your PS5.', factIds: ['f-ps5'] },
+        { op: 'warn', after: 's1', text: '$1,799: $300 over your budget.', factIds: ['f-ps5'] },
+        { op: 'note', after: 's1', text: 'Fits runs outside your gym.', factIds: ['f-ps5'] },
+      ],
+      facts,
+    )
+    expect(out.map((e) => (e.op === 'note' || e.op === 'warn' ? e.text : e.op))).toEqual(['120 Hz: matches your PS5.', '$1,799: $300 over your budget.', 'Fits runs outside your gym.'])
   })
 })
 

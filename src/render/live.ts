@@ -17,6 +17,8 @@ export interface Run {
   cancelled: boolean
   /** The user scrolled by hand during the run: stop steering the viewport, keep applying. */
   userScrolled: boolean
+  /** Whether a step may move the window at all (demo scroll on). Off when the caller keeps the viewport, and in tests. */
+  steer: boolean
   /** Multiplier on every duration. 0 plays every step at once, still in order (tests). */
   pace: number
   animations: Set<Animation>
@@ -42,6 +44,8 @@ export const MOTION = {
   erasePerChar: 6,
   glowTail: 260,
   flip: 650,
+  /** The halo on a moved-down part once the window has followed it to where it landed: "still here, just lower". */
+  land: 760,
   noteIn: 440,
   badgeIn: 380,
   /** Breath between two changes. */
@@ -60,7 +64,7 @@ const SCROLL_KEYS = new Set([' ', 'ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', 
 
 /** Starts a run and watches for the reader scrolling by hand. finishRun removes the listeners. */
 export function startRun(pace = 1): Run {
-  const run: Run = { cancelled: false, userScrolled: false, pace: reducedMotion() ? 0 : pace, animations: new Set(), cleanups: [] }
+  const run: Run = { cancelled: false, userScrolled: false, steer: true, pace: reducedMotion() ? 0 : pace, animations: new Set(), cleanups: [] }
   if (typeof window !== 'undefined') {
     const took = (): void => {
       run.userScrolled = true

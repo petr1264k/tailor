@@ -24,11 +24,23 @@ export const MAX_PROMPT_REGION_LINES = 40
 export const MAX_PROMOTES = 5
 export const MAX_BADGES = 6
 /** Notes are the main thing on a storefront (one per card that connects to a fact), so the cap is generous; warns stay rare. */
-export const MAX_NOTES = 14
+export const MAX_NOTES = 18
 export const MAX_WARNS = 4
+
+/**
+ * A note that tells the person the page, a product or "the rest of this page" is not for them, unrelated to their work
+ * or skippable. They opened this page themselves; such a note is noise at best and condescension at worst (Petr, Oct 10:
+ * no "The rest of this page is about outdoor gear, which doesn't tie to your current work"). Code drops it (rule 5b).
+ */
+export const DISMISSIVE_NOTE =
+  /\b(not (really )?(for|about|relevant to|related to|tied to|aimed at) you|(doesn'?t|does not|won'?t|will not|isn'?t|is not) (tie|relate|connect|apply|matter|speak|fit|relevant|related)\b|unrelated|irrelevant|(the )?rest of (this|the) (page|site)|nothing (here|on this page|for you)|(skip|ignore) (this|the rest|these)|not your (thing|area|focus|work)|(little|no) (use|value|relevance) (to|for) you)\b/i
+
+export const isDismissive = (text: string): boolean => DISMISSIVE_NOTE.test(text)
 
 /** Stable across calls so it is prompt-cached (completeJson sets cache_control). Put nothing volatile here. */
 export const EDIT_SYSTEM = `You edit one web page, in place, for one person, using a few facts about them. The page is given as numbered text elements (id, tag, text) and, when it has one, a page map: regions (r1, r2, ...) with a role and a title, and the cards inside them (i1, i2, ...: a product, a category, a collection tile, with its price and one line of detail as the page shows them). Reply with JSON only: {"edits":[...]}.
+
+This person opened this page themselves: they are here because they want what this site sells or says. Take that as given. Every note, warn and reason speaks to that choice: which thing on this page fits their life and why, in their terms. The facts are a window into that life (devices they own, their work, hobbies, travel, commute, home, family, budget, city); use any of them to connect a card to the person. Never tell them the page, a product, a category or "the rest of this page" is not for them, does not relate to their work or interests, or can be skipped: that is not a note, it is noise, and code drops it. A mismatch is said only as a concrete conflict in a warn (a price over their budget, a connector or device that does not match).
 
 Edit types (use only these):
 - {"op":"rewrite","id":"s12","text":"...","factIds":["f3"]}: replace that element's text. Same meaning, written for this person: their language, their reading level, their vocabulary, shorter where the original rambles, concrete where it is vague. factIds (optional) name the facts that explain the change (reading level, expertise, language, interests).
@@ -43,7 +55,8 @@ Rules:
 2. Anything about the person (their budget, devices, stack, goals) goes ONLY in note and warn edits that cite factIds. Never inside a rewrite. Never invent fact ids.
 3. Rewrite the elements this person will actually read: the headline, the key paragraphs, list items that carry specs or steps. Leave untouched: labels, menu items, buttons, legal text, prices, and anything already right for them. Do not rewrite an element to say the same thing.
 4. Hide whole runs of consecutive ids, whole regions (r#) or whole cards (i#), not single words. Always include the ids listed under "Outside ads" when there are any. Never hide prices, specs, steps, warnings, requirements, the product shelf, or an element you anchor a note to.
-5. Notes go on the cards. On a page with a map, put a note (or a warn) on EVERY card that connects to a fact, fit or conflict: 8 to 14 across the product shelf, the collections and the category tiles, each naming that card's own spec, price or feature. Different cards get different notes; never repeat a note. One or two notes may go on other elements (the headline, a guide). Put the most useful one near the top. At most 14 notes and 4 warns. note/warn "after" is an item id (i#), a region id (r#) or an element id (s#).
+5. Notes go on the cards. On a page with a map, put a note (or a warn) on EVERY card that connects to a fact, fit or conflict: 10 to 18 across the product shelf, the collections and the category tiles, each naming that card's own spec, price or feature and the fact it serves. A card connects through any fact, not only their work: a device they own, a trip, a commute, a desk, a home, a hobby, a budget. When few cards match a fact head-on, still find the honest angle for the next most useful ones (the one they would use at their desk, on their trips, with the device they own). Different cards get different notes; never repeat a note. One or two notes may go on other elements (the headline, a guide). Put the most useful one near the top. At most 18 notes and 4 warns. note/warn "after" is an item id (i#), a region id (r#) or an element id (s#).
+5b. A note says what fits and why; never what does not. No note, warn, badge or reason about a part of the page being irrelevant, unrelated to them or skippable: hide moves such parts down silently, and a note saying so is dropped by code.
 5a. On a page with a map, personalize the STRUCTURE too: promote the region whose items fit this person's devices, needs and budget (at most 2 regions), promote the 3-5 cards that fit them best to the front of their list (the cards you note), and hide the regions that are not for them (code moves them to the bottom). Cards get notes, not badges; a badge (at most 6) is for an element that is not a card. A card that conflicts with a fact (over budget, wrong connector, wrong device) gets a warn. Items and regions you promote, note or warn about must exist in the map.
 6. Never include the person's name, and never quote their chats. Use double quotes only around exact page text.
 7. If a Layout line is given, follow it: it is how this person has shown they like pages laid out.
@@ -139,6 +152,8 @@ export function buildEditUserPrompt(content: PageContent, facts: Fact[], options
  *   claim without evidence is exactly what we promise never to show.
  * - rewrite factIds are filtered the same way (an empty list becomes no list: no chip).
  * - at most MAX_NOTES notes and MAX_WARNS warns reach the page (rule 5), in the model's order.
+ * - a note, warn, badge or promote reason that dismisses the page or a part of it as not for this person is dropped
+ *   (rule 5b, isDismissive): they chose to open this page.
  */
 export function checkEdits(edits: PageEdit[], facts: Fact[]): PageEdit[] {
   const known = new Set(facts.map((f) => f.id))
@@ -153,6 +168,7 @@ export function checkEdits(edits: PageEdit[], facts: Fact[]): PageEdit[] {
     if (e.op === 'note' || e.op === 'warn') {
       const factIds = keepIds(e.factIds)
       if (factIds.length === 0) continue
+      if (isDismissive(e.text)) continue // "the rest of this page is not for you" is never a note (rule 5b)
       if (e.op === 'note' && ++notes > MAX_NOTES) continue
       if (e.op === 'warn' && ++warns > MAX_WARNS) continue
       out.push({ ...e, factIds })
@@ -160,6 +176,7 @@ export function checkEdits(edits: PageEdit[], facts: Fact[]): PageEdit[] {
       // Structural edits are "for you" claims too: no evidence, no edit. One promote per target.
       const factIds = keepIds(e.factIds)
       if (factIds.length === 0) continue
+      if (isDismissive(e.op === 'promote' ? e.reason : e.label)) continue // the reason is shown as a note; same rule
       if (e.op === 'promote') {
         if (promoted.has(e.id) || ++promotes > MAX_PROMOTES) continue
         promoted.add(e.id)

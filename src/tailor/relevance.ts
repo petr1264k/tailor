@@ -78,7 +78,7 @@ export function scoreFact(fact: Fact, page: Set<string>): number {
 }
 
 /** Only the facts relevant to THIS page go to the model. Code-first (keyword overlap with page text), then an optional model pass (RelevantFactIdsSchema). */
-export async function selectRelevantFacts(profile: Profile, content: PageContent, max = 8): Promise<Fact[]> {
+export async function selectRelevantFacts(profile: Profile, content: PageContent, max = 12): Promise<Fact[]> {
   const page = expandPageTokens(pageTokens(content), content)
   const ranked = activeFacts(profile)
     // Learned layout facts ('layout:specs_first') reach the rewrite as the Layout line (learn.bestLayout), not as facts.

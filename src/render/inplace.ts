@@ -2,9 +2,10 @@
  * In-place rendering (CONTEXT.txt §3.7): apply a TailoredPage's edits to the site's OWN DOM. Owner: Petr.
  *
  * The site keeps its look. A rewrite swaps the text inside the site's element (same tag, same site styles). A hide
- * HIDES NOTHING but an outside ad (Petr, Oct 10: "don't hide stuff, just reorder"; ads are decided by code in
- * src/sites/ads): the smallest container that holds only those elements moves to the end of its parent, so what does
- * not matter to this person sits below what does; an ad folds away. No reason is ever shown for either. A note is a
+ * HIDES NOTHING (Petr, Oct 10: "don't hide stuff, just reorder", "keep move downs just dont delete sections"): the
+ * smallest container that holds only those elements moves to the end of its parent, so what does not matter to this
+ * person sits below what does, an outside ad included. A card whose move would carry it out of sight (into the clipped
+ * tail of a carousel) stays where it is: that would read as a deletion. No reason is ever shown. A note is a
  * sticky note STUCK ON the element it is about: it lives in an overlay (absolutely positioned in
  * <body>), pinned to a corner of the element's box, and follows the element through layout changes (see `placePin`).
  * Each change carries a "why" chip. Original ↔ Tailored puts every original node back: `off()` undoes exactly what
@@ -480,6 +481,26 @@ function commonAncestor(els: Element[]): Element | null {
 }
 
 /**
+ * Would moving `t` to the end of its parent take it out of sight? A card in a carousel (overflow hidden, only the first
+ * few slides showing) goes from on screen to behind the clip: to the eye that is a deletion, not a move-down. Measured
+ * by trying the move and putting the node back before anything paints. Elements already clipped away (the carousel's
+ * unseen slides) and pages without layout (jsdom) answer false.
+ */
+export function hiddenByMove(t: Element): boolean {
+  const parent = t.parentElement
+  if (!parent || parent.lastElementChild === t) return false
+  const clips = clippingAncestors(t)
+  if (clips.length === 0) return false
+  const wasVisible = !clippedAway(t.getBoundingClientRect(), clips)
+  if (!wasVisible) return false
+  const next = t.nextSibling
+  parent.append(t)
+  const nowHidden = clippedAway(t.getBoundingClientRect(), clips)
+  parent.insertBefore(t, next)
+  return nowHidden
+}
+
+/**
  * The elements to hide for a group: the highest ancestor that holds only this group's segments (so a whole
  * testimonials <section> folds, images and all), else each element on its own. Never body/html/main/article.
  */
@@ -663,13 +684,14 @@ export function applyInPlace(page: TailoredPage, facts: Fact[], ui: TailorUi, ta
   // 2. Hides. Nothing is ever removed or display:none'd, not even a code-detected outside ad (Petr, Oct 10 6 pm:
   //    "keep move downs just dont delete sections completely"): the part (the smallest exclusive container; a region
   //    or item is one already) moves to the end of its parent, below what matters to this person, where it stays
-  //    readable. The label carries no reason. Undo puts each moved node back between its original neighbours (in
-  //    reverse, so neighbours that moved too are back first).
+  //    readable. A card that the move would carry behind a carousel's clip stays put (hiddenByMove). The label
+  //    carries no reason. Undo puts each moved node back between its original neighbours (in reverse, so neighbours
+  //    that moved too are back first). In demo mode the window follows the part down to where it landed.
   for (const edit of edits) {
     if (edit.op !== 'hide') continue
     const direct = edit.ids.filter(isMapId).map(resolveId).filter((e): e is Element => !!e)
     const group = edit.ids.filter((id) => !isMapId(id)).map(resolveId).filter((e): e is Element => !!e)
-    const moved = [...direct, ...foldTargets(group, allSegmentEls).filter((t) => !direct.some((d) => d.contains(t)))]
+    const moved = [...direct, ...foldTargets(group, allSegmentEls).filter((t) => !direct.some((d) => d.contains(t)))].filter((t) => !hiddenByMove(t))
     if (moved.length === 0) continue
     const origin = new Map<Element, { parent: Element; next: Node | null }>()
     push({
@@ -691,10 +713,17 @@ export function applyInPlace(page: TailoredPage, facts: Fact[], ui: TailorUi, ta
         }
         origin.clear()
       },
-      // The part slides down out of the way and what followed it slides up.
+      // The part slides down out of the way and what followed it slides up. Then the window follows it to where it
+      // landed and it glows there, so the audience sees it is still on the page, just lower (Petr, Oct 10: "if an
+      // element is rearranged the scroll in demo should show where it was put"). The next step brings the window back.
       play: async (run, on) => {
         const scope = [...new Set(moved.flatMap((t) => flipScope(t, t.parentElement)))]
         await flip(run, scope, on)
+        if (run.cancelled || !run.steer) return
+        const landed = moved[0]!
+        await bringOnScreen(run, landed)
+        if (run.cancelled) return
+        await glow(run, landed, MOTION.land)
       },
     })
   }
@@ -832,7 +861,7 @@ export interface PlayOptions {
 /**
  * Plays the applied changes instead of showing them at once (demo mode): promotes fly to their new spot first, then
  * everything else plays top to bottom, each change brought on screen first and changes already on screen cascading a
- * beat apart; the window ends back at the top. The window moves only to a change, never over the whole page first:
+ * beat apart; a move-down plays alone and the window follows the part to where it landed; the window ends back at the top. The window moves only to a change, never over the whole page first:
  * on a long storefront (anker.com) a warm-up pass to the bottom and back read as a dash to the bottom of the page.
  * Resolves with whether the tailored view is on screen when it ends: true after a
  * full run, true when showInPlace cut it short, false when hideInPlace (Original) stopped it. A reader who scrolls
@@ -848,6 +877,7 @@ export async function playInPlace(ui: TailorUi, opts: PlayOptions = {}): Promise
   state.shown = true
   if (state.dwellStart === null) state.dwellStart = Date.now()
   const scroll = opts.scroll !== false
+  run.steer = scroll
   const total = state.applied.length
   let index = 0
   const play = async (a: Applied): Promise<void> => {
@@ -870,7 +900,9 @@ export async function playInPlace(ui: TailorUi, opts: PlayOptions = {}): Promise
       const first = queue.shift()!
       if (scroll) await bringOnScreen(run, first.step.target())
       const group = [first]
-      while (queue.length && group.length < 6 && (!scroll || onScreen(queue[0]!.step.target()))) group.push(queue.shift()!)
+      // A move-down plays alone: its motion ends with the window away at the landing spot, where nothing else plays.
+      const solo = (a: Applied): boolean => a.step.op === 'hide'
+      while (!solo(first) && queue.length && group.length < 6 && !solo(queue[0]!) && (!scroll || onScreen(queue[0]!.step.target()))) group.push(queue.shift()!)
       await Promise.all(group.map((a, i) => pause(run, i * MOTION.cascade).then(() => play(a))))
       await pause(run, MOTION.stepGap)
     }

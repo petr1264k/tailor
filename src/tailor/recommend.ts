@@ -15,21 +15,22 @@
  *                                  on a priced card), every number in the text on THAT card (or in a cited fact), a
  *                                  pick over the person's budget becomes a skip, one pick per card, caps, no "This",
  *                                  no ranks, no superlatives.
- *   picksToEdits(...)              existing PageEdit ops only: a pick is a promote (to the front of its shelf) plus a
- *                                  note; a skip is a warn; the answer is a note; the shelf holding most picks is promoted.
+ *   picksToEdits(...)              existing PageEdit ops only: a pick is a promote (the card to the front of its own
+ *                                  shelf; sections themselves never move, Petr Oct 10 6:30 pm) plus a note; a skip is
+ *                                  a warn; the answer is a note.
  *   mergeRecommendations(...)      the picks take the cards they cover and the structure (promotes); the edit model
  *                                  keeps its rewrites, hides and its notes on other cards, under the same note cap.
  *                                  Then runEditGate, as before.
  * Nothing here changes the renderer, the gate or the frozen types.
  */
-import type { Fact, FactCategory, PageContent, PageEdit, PageItem, PageRegion, RegionRole } from '@/types'
+import type { Fact, FactCategory, PageContent, PageEdit, PageItem, RegionRole } from '@/types'
 import { PicksOutputSchema, type PicksOutput } from '@/schemas'
 import { completeJson } from '@/llm/client'
 import { siteProfileFor } from '@/sites'
 import { claimKey, findClaims, matchForm } from '@/gate/claims'
 import { matchesUserFact } from '@/gate'
 import { normalizeForMatch } from '@/gate/normalize'
-import { MAX_NOTES } from './edit'
+import { isDismissive, MAX_NOTES } from './edit'
 import { expandPageTokens, tokenize } from './relevance'
 import { chooseLanguage, type RewriteOptions } from './rewrite'
 
@@ -234,10 +235,13 @@ export function claimsNotOnCard(text: string, c: Candidate, facts: Fact[]): stri
   return bad
 }
 
-/** One line, at most MAX_PICK_CHARS, never "This ..." filler, no ranks or superlatives (they claim more than the page proves), never empty. */
+/**
+ * One line, at most MAX_PICK_CHARS; never "This ..." filler, ranks or superlatives (they claim more than the page
+ * proves), never a text that dismisses the page or a part of it (edit.ts isDismissive: they opened this page); never empty.
+ */
 export function cleanPickText(text: string): string {
   let t = oneLine(text)
-  if (/^this\b/i.test(t) || SUPERLATIVE_RE.test(t)) return ''
+  if (/^this\b/i.test(t) || SUPERLATIVE_RE.test(t) || isDismissive(t)) return ''
   if (t.length > MAX_PICK_CHARS) {
     const cut = t.slice(0, MAX_PICK_CHARS - 1)
     const at = cut.lastIndexOf(' ')
@@ -337,38 +341,14 @@ export function checkPicks(out: PicksOutput, brief: Brief, candidates: Candidate
   return { picks, skips, answer, rejected }
 }
 
-/** The region holding the most picks (ties: the earlier one), or null when there are no picks. */
-export function pickedRegion(picks: CheckedPick[], candidates: Candidate[]): string | null {
-  const regionOf = new Map(candidates.map((c) => [c.item.id, c.regionId]))
-  const counts = new Map<string, number>()
-  for (const p of picks) {
-    const r = regionOf.get(p.item)
-    if (r) counts.set(r, (counts.get(r) ?? 0) + 1)
-  }
-  let best: string | null = null
-  let bestCount = 0
-  for (const [r, n] of counts) {
-    if (n > bestCount) {
-      best = r
-      bestCount = n
-    }
-  }
-  return best
-}
-
 /**
- * The recommendations as existing PageEdit ops, in the order the renderer wants them: the picked shelf moves up under
- * the hero, each pick moves to the front of its shelf (rank order: the first promote lands first) and gets its note,
- * each skip gets its warn, the answer its note. No new op, so the renderer and the gate need no change.
+ * The recommendations as existing PageEdit ops, in the order the renderer wants them: each pick moves to the front of
+ * its own shelf (rank order: the first promote lands first) and gets its note, each skip gets its warn, the answer its
+ * note. Sections never move (only cards reorder inside their list), so no region promote. No new op: the renderer and
+ * the gate need no change.
  */
-export function picksToEdits(checked: CheckedPicks, candidates: Candidate[], regions: PageRegion[] = []): PageEdit[] {
+export function picksToEdits(checked: CheckedPicks): PageEdit[] {
   const edits: PageEdit[] = []
-  const regionId = pickedRegion(checked.picks, candidates)
-  const region = regions.find((r) => r.id === regionId)
-  if (region && region.role !== 'hero') {
-    const factIds = [...new Set(checked.picks.flatMap((p) => p.factIds))]
-    edits.push({ op: 'promote', id: region.id, reason: 'Where your picks are', factIds })
-  }
   for (const p of checked.picks) edits.push({ op: 'promote', id: p.item, reason: 'Picked for you', factIds: p.factIds })
   for (const p of checked.picks) edits.push({ op: 'note', after: p.item, text: p.text, factIds: p.factIds })
   for (const s of checked.skips) edits.push({ op: 'warn', after: s.item, text: s.text, factIds: s.factIds })
@@ -438,7 +418,7 @@ export async function recommend(content: PageContent, facts: Fact[], options: Re
     const groups = siteProfileFor(content.url).vocabulary
     const checked = checkPicks(value, brief, candidates, content.url, groups)
     return {
-      edits: picksToEdits(checked, candidates, content.regions ?? []),
+      edits: picksToEdits(checked),
       candidates: candidates.length,
       picks: checked.picks.length,
       skips: checked.skips.length,

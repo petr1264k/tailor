@@ -130,6 +130,7 @@ describe('claimsNotOnCard / budgets / text', () => {
     expect(cleanPickText('This charger is great for you')).toBe('')
     expect(cleanPickText('#1 for your MacBook: 140W')).toBe('')
     expect(cleanPickText('Best charger here for your MacBook')).toBe('')
+    expect(cleanPickText('The rest of this page is not for you')).toBe('')
     expect(cleanPickText('Full-speed  MacBook charging\n on trips: 140W, $89.99')).toBe('Full-speed MacBook charging on trips: 140W, $89.99')
   })
 })
@@ -197,10 +198,9 @@ describe('picksToEdits / mergeRecommendations', () => {
     answer: { item: 'i4', text: 'You asked about Japan: works in 200 countries, $45.99', factIds: ['f-japan'] },
     rejected: 0,
   }
-  it('promotes the shelf, then each pick in rank order, then notes, warns and the answer, with existing ops only', () => {
-    const edits = picksToEdits(checked, candidates, regions)
+  it('moves each pick to the front of its own shelf in rank order, then notes, warns and the answer; never moves a section', () => {
+    const edits = picksToEdits(checked)
     expect(edits.map((e) => `${e.op}:${'id' in e ? e.id : 'after' in e ? e.after : ''}`)).toEqual([
-      'promote:r2',
       'promote:i1',
       'promote:i2',
       'note:i1',
@@ -208,9 +208,9 @@ describe('picksToEdits / mergeRecommendations', () => {
       'warn:i3',
       'note:i4',
     ])
-    const shelf = edits[0] as Extract<PageEdit, { op: 'promote' }>
-    expect(shelf.factIds).toEqual(['f-mac'])
-    expect(shelf.reason).not.toMatch(/\d/)
+    expect(edits.some((e) => e.op === 'promote' && e.id.startsWith('r'))).toBe(false)
+    const first = edits[0] as Extract<PageEdit, { op: 'promote' }>
+    expect(first.reason).not.toMatch(/\d/)
   })
   it('with picks, drops the edit model’s notes, promotes and badges on covered cards and all its promotes, keeps the rest; without picks, leaves its edits alone', () => {
     const model: PageEdit[] = [
@@ -222,7 +222,7 @@ describe('picksToEdits / mergeRecommendations', () => {
       { op: 'promote', id: 'i5', reason: 'fits', factIds: ['f-mac'] },
       { op: 'badge', id: 's1', label: 'For you', factIds: ['f-mac'] },
     ]
-    const picks = picksToEdits(checked, candidates, regions)
+    const picks = picksToEdits(checked)
     const merged = mergeRecommendations(model, picks)
     expect(merged.slice(0, picks.length)).toEqual(picks)
     expect(merged.slice(picks.length)).toEqual([model[0], model[1], model[3], model[6]])
@@ -245,7 +245,7 @@ describe('recommend', () => {
     const recs = await recommend(content, [macbook, budget, japan, reading])
     expect(recs.candidates).toBe(9)
     expect(recs.picks).toBe(1)
-    expect(recs.edits.map((e) => e.op)).toEqual(['promote', 'promote', 'note'])
+    expect(recs.edits.map((e) => e.op)).toEqual(['promote', 'note'])
     const call = vi.mocked(completeJson).mock.calls.at(-1)![0]
     expect(call.user).toContain('f-mac | owns | owns a MacBook Pro')
     expect(call.user).toContain('i1 | products shelf "Must-Have Anker Selections" | Anker Prime Charger (140W, 3 ports) | $89.99 (was $109.99)')
